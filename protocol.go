@@ -1,5 +1,12 @@
 package streamux
 
+// TODO:
+// - OOB messages
+// - Quick init
+// - ???
+
+// Should there be priority sent across the wire? Probably not
+
 import (
 	"math"
 )
