@@ -59,6 +59,20 @@ func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	return this
 }
 
+func (this *Protocol) SendMessage(priority int, contents []byte) {
+	isEndOfData := true
+	message := this.BeginMessage(priority)
+	defer message.Close()
+	message.AddData(contents, isEndOfData)
+}
+
+func (this *Protocol) SendResponseMessage(priority int, responseToId int, contents []byte) {
+	isEndOfData := true
+	message := this.BeginResponseMessage(priority, responseToId)
+	defer message.Close()
+	message.AddData(contents, isEndOfData)
+}
+
 func (this *Protocol) BeginMessage(priority int) *SendableMessage {
 	isResponse := false
 	return newSendableMessage(this, priority, this.allocateId(),

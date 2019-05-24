@@ -66,7 +66,7 @@ func newSendableMessage(protocol *Protocol, priority int, id int, headerLength i
 	return this
 }
 
-func (this *SendableMessage) AddData(data []byte) {
+func (this *SendableMessage) AddData(data []byte, isEndOfData bool) {
 	if this.isClosed {
 		panic(fmt.Errorf("Message has been closed"))
 	}
@@ -85,16 +85,12 @@ func (this *SendableMessage) AddData(data []byte) {
 			data = data[lengthToAdd:]
 		}
 	}
-}
 
-func (this *SendableMessage) Complete() {
-	if this.isClosed {
-		panic(fmt.Errorf("Message has been closed"))
+	if isEndOfData {
+		terminateMessage := uint32(1)
+		this.sendCurrentChunk(terminateMessage)
+		this.Close()
 	}
-
-	terminateMessage := uint32(1)
-	this.sendCurrentChunk(terminateMessage)
-	this.Close()
 }
 
 func (this *SendableMessage) Close() {
