@@ -13,6 +13,7 @@ func boolToUint32(value bool) uint32 {
 
 type SendableMessage struct {
 	protocol           *Protocol
+	priority           int
 	id                 int
 	responseBitShifted uint32
 	idShifted          uint32
@@ -41,12 +42,13 @@ func (this *SendableMessage) fillHeader(terminationBit uint32) {
 
 func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) {
 	this.fillHeader(terminationBit)
-	this.protocol.sendMessageChunk(this.data)
+	this.protocol.sendMessageChunk(this.priority, this.data)
 }
 
-func newSendableMessage(protocol *Protocol, id int, idBits int, lengthBits int, isResponse bool) *SendableMessage {
+func newSendableMessage(protocol *Protocol, priority int, id int, idBits int, lengthBits int, isResponse bool) *SendableMessage {
 	this := new(SendableMessage)
 	this.protocol = protocol
+	this.priority = priority
 	this.id = id
 	this.idShifted = uint32(id) << shiftId
 	this.headerLength = protocol.getHeaderLength()
@@ -72,7 +74,8 @@ func (this *SendableMessage) AddData(data []byte) {
 		this.data = append(this.data, data[:lengthToAdd]...)
 		currentLength = this.dataLength()
 		if currentLength == this.maxChunkLength {
-			this.sendCurrentChunk(0)
+			dontTerminateMessage := uint32(0)
+			this.sendCurrentChunk(dontTerminateMessage)
 			data = data[lengthToAdd:]
 		}
 	}
@@ -83,7 +86,8 @@ func (this *SendableMessage) Complete() {
 		panic(fmt.Errorf("Message has been closed"))
 	}
 
-	this.sendCurrentChunk(1)
+	terminateMessage := uint32(1)
+	this.sendCurrentChunk(terminateMessage)
 	this.Close()
 }
 
@@ -91,6 +95,5 @@ func (this *SendableMessage) Close() {
 	if this.isClosed {
 		return
 	}
-	this.protocol.disposeId(this.id)
 	this.isClosed = true
 }

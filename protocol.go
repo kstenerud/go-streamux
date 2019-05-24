@@ -23,7 +23,7 @@ func calculateHeaderLength(idBits, lengthBits int) int {
 
 type ProtocolCallbacks interface {
 	OnMessageChunkReceived(messageId int, isEnd bool, data []byte)
-	OnDataReadyToSend(data []byte)
+	OnMessageChunkReadyToSend(priority int, data []byte)
 }
 
 type negotiationStruct struct {
@@ -45,8 +45,8 @@ type Protocol struct {
 	isInitilized bool
 }
 
-func (this *Protocol) sendMessageChunk(message []byte) {
-	this.callbacks.OnDataReadyToSend(message)
+func (this *Protocol) sendMessageChunk(priority int, message []byte) {
+	this.callbacks.OnMessageChunkReadyToSend(priority, message)
 }
 
 func (this *Protocol) disposeId(id int) {
@@ -106,7 +106,7 @@ func capBitCounts(idBits, lengthBits int) (idBitsCapped, lengthBitsCapped int) {
 	return idBitsCapped, lengthBitsCapped
 }
 
-func (this *Protocol) negotiateInitializeHeader(data []byte) error {
+func (this *Protocol) negotiateInitializeMessage(data []byte) error {
 	if len(data) < initializeMessageLength {
 		return fmt.Errorf("Expected %v bytes for initialize message, but got %v", initializeMessageLength, len(data))
 	}
@@ -170,28 +170,29 @@ func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	this.negotiation.allowQuickInit = 0   // TODO
 	this.callbacks = callbacks
 
-	this.sendMessageChunk(this.buildInitializeMessage())
+	this.sendMessageChunk(priorityOOB, this.buildInitializeMessage())
 
 	return this
 }
 
-func (this *Protocol) BeginMessage() *SendableMessage {
+func (this *Protocol) BeginMessage(priority int) *SendableMessage {
 	isResponse := false
-	return newSendableMessage(this, this.nextFreeID(), this.negotiation.idBits,
+	return newSendableMessage(this, priority, this.nextFreeID(), this.negotiation.idBits,
 		this.negotiation.lengthBits, isResponse)
 }
 
-func (this *Protocol) BeginResponseMessage(responseToId int) *SendableMessage {
+func (this *Protocol) BeginResponseMessage(priority int, responseToId int) *SendableMessage {
 	isResponse := true
-	return newSendableMessage(this, this.nextFreeID(), this.negotiation.idBits,
+	return newSendableMessage(this, priority, this.nextFreeID(), this.negotiation.idBits,
 		this.negotiation.lengthBits, isResponse)
 }
 
-func (this *Protocol) Feed(data []byte) error {
+func (this *Protocol) Feed(incomingStreamData []byte) error {
 	if !this.isInitilized {
-		if err := this.negotiateInitializeHeader((data)); err != nil {
+		if err := this.negotiateInitializeMessage((incomingStreamData)); err != nil {
 			return err
 		}
+		incomingStreamData = incomingStreamData[initializeMessageLength : len(incomingStreamData)-1]
 		this.isInitilized = true
 	}
 
