@@ -4,17 +4,11 @@ import (
 	"fmt"
 )
 
-func boolToUint32(value bool) uint32 {
-	if value {
-		return 1
-	}
-	return 0
-}
-
 type SendableMessage struct {
+	Id int
+
 	protocol           *Protocol
 	priority           int
-	id                 int
 	responseBitShifted uint32
 	idShifted          uint32
 	lengthShift        uint
@@ -22,6 +16,18 @@ type SendableMessage struct {
 	maxChunkLength     int
 	data               []byte
 	isClosed           bool
+}
+
+const (
+	shiftResponseBit = 1
+	shiftId          = 2
+)
+
+func boolToUint32(value bool) uint32 {
+	if value {
+		return 1
+	}
+	return 0
 }
 
 func (this *SendableMessage) dataLength() int {
@@ -45,13 +51,13 @@ func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) {
 	this.protocol.sendMessageChunk(this.priority, this.data)
 }
 
-func newSendableMessage(protocol *Protocol, priority int, id int, idBits int, lengthBits int, isResponse bool) *SendableMessage {
+func newSendableMessage(protocol *Protocol, priority int, id int, headerLength int, idBits int, lengthBits int, isResponse bool) *SendableMessage {
 	this := new(SendableMessage)
 	this.protocol = protocol
 	this.priority = priority
-	this.id = id
+	this.Id = id
 	this.idShifted = uint32(id) << shiftId
-	this.headerLength = protocol.getHeaderLength()
+	this.headerLength = headerLength
 	this.maxChunkLength = 1<<uint(lengthBits) - 1
 	this.data = make([]byte, this.headerLength, this.maxChunkLength)
 	this.responseBitShifted = boolToUint32(isResponse) << shiftResponseBit
@@ -95,5 +101,6 @@ func (this *SendableMessage) Close() {
 	if this.isClosed {
 		return
 	}
+	this.protocol.deallocateId(this.Id)
 	this.isClosed = true
 }

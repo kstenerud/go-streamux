@@ -18,12 +18,12 @@ func NewIdPool(idBits int) *IdPool {
 	return this
 }
 
-func (this *IdPool) CheckoutNextId() int {
+func (this *IdPool) AllocateId() int {
 	// TODO
 	this.lastId = (this.lastId + 1) & this.idMask
 	return this.lastId
 }
 
-func (this *IdPool) CheckinId(id int) {
+func (this *IdPool) DeallocateId(id int) {
 	// TODO
 }
