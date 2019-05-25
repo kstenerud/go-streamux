@@ -5,8 +5,6 @@ package streamux
 // - Quick init
 // - ???
 
-// Should there be priority sent across the wire? Probably not
-
 import (
 	"math"
 )
@@ -90,7 +88,7 @@ func (this *Protocol) BeginResponseMessage(priority int, responseToId int) *Send
 func (this *Protocol) Feed(incomingStreamData []byte) error {
 	if !this.negotiator.IsNegotiated {
 		var err error
-		if incomingStreamData, err = this.negotiator.Negotiate(incomingStreamData); err != nil {
+		if incomingStreamData, err = this.negotiator.Feed(incomingStreamData); err != nil {
 			return err
 		}
 		if this.negotiator.IsNegotiated {

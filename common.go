@@ -2,7 +2,7 @@ package streamux
 
 func useBytes(byteCount int, buffer []byte) (usedPortion []byte, remainingPortion []byte) {
 	usedPortion = buffer[:byteCount]
-	remainingPortion = buffer[byteCount : len(buffer)-1]
+	remainingPortion = buffer[byteCount:len(buffer)]
 	return usedPortion, remainingPortion
 }
 

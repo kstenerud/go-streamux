@@ -115,15 +115,57 @@ func capBitCounts(idBits, lengthBits int) (idBitsCapped, lengthBitsCapped int) {
 	return idBitsCapped, lengthBitsCapped
 }
 
+func validateMinMaxValue(name string, value int, min int, max int) error {
+	if value < min {
+		return fmt.Errorf("%v has value %v, which is less than the minimum of %v", name, value, min)
+	}
+	if value > max {
+		return fmt.Errorf("%v has value %v, which is greater than the minimum of %v", name, value, min)
+	}
+	return nil
+}
+
+func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
+	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
+	requestQuickInit int, allowQuickInit int) error {
+
+	if err := validateMinMaxValue("min length", lengthMinBits, 1, 15); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxValue("max length", lengthMaxBits, 1, 30); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxValue("recommended length", lengthRecommendBits, 1, 31); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxValue("min ID", idMinBits, 0, 15); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxValue("max ID", idMaxBits, 0, 30); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxValue("recommended ID", idRecommendBits, 0, 31); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (this *negotiator_) Initialize(lengthMinBits int, lengthMaxBits int,
 	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
-	requestQuickInit bool, allowQuickInit bool) {
+	requestQuickInit bool, allowQuickInit bool) error {
+
 	this.lengthMinBits = lengthMinBits
 	this.lengthMaxBits = lengthMaxBits
 	this.LengthBits = lengthRecommendBits
 	this.idMinBits = idMinBits
 	this.idMaxBits = idMaxBits
-	this.idMaxBits = idRecommendBits
+	this.IdBits = idRecommendBits
 	this.requestQuickInit = 0
 	if requestQuickInit {
 		this.requestQuickInit = 1
@@ -132,7 +174,14 @@ func (this *negotiator_) Initialize(lengthMinBits int, lengthMaxBits int,
 	if allowQuickInit {
 		this.allowQuickInit = 1
 	}
-	this.messageBuffer = make([]byte, initializeMessageLength)
+
+	if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
+		this.idMinBits, this.idMaxBits, this.IdBits, this.requestQuickInit, this.allowQuickInit); err != nil {
+		return err
+	}
+
+	this.messageBuffer = make([]byte, 0, initializeMessageLength)
+	return nil
 }
 
 func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
@@ -194,7 +243,7 @@ func (this *negotiator_) BuildInitializeMessage() []byte {
 	return request
 }
 
-func (this *negotiator_) Negotiate(incomingStreamData []byte) (updatedStreamData []byte, err error) {
+func (this *negotiator_) Feed(incomingStreamData []byte) (updatedStreamData []byte, err error) {
 	updatedStreamData = incomingStreamData
 	if !this.IsNegotiated {
 		if len(this.messageBuffer) < initializeMessageLength {
