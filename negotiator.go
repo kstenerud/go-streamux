@@ -99,6 +99,8 @@ func negotiateBitCount(name string, usMin int, usMax int, usRecommended int, the
 }
 
 func capBitCounts(idBits, lengthBits int) (idBitsCapped, lengthBitsCapped int) {
+	idBitsCapped = idBits
+	lengthBitsCapped = lengthBits
 	if lengthBits+idBits > maxTotalBits {
 		midpoint := maxTotalBits / 2
 		if lengthBits >= midpoint {

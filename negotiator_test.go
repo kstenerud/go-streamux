@@ -136,6 +136,44 @@ func assertNegotiationFail(t *testing.T,
 	}
 }
 
+func assertNegotiation(t *testing.T,
+	usLengthMinBits int, usLengthMaxBits int, usLengthRecommendBits int,
+	usIdMinBits int, usIdMaxBits int, usIdRecommendBits int,
+	usRequestQuickInit bool, usAllowQuickInit bool,
+	themVersion int,
+	themLengthMinBits int, themLengthMaxBits int, themLengthRecommendBits int,
+	themIdMinBits int, themIdMaxBits int, themIdRecommendBits int,
+	themRequestQuickInit bool, themAllowQuickInit bool,
+	expectLengthBits int, expectIdBits int) {
+
+	var negotiator negotiator_
+	if err := negotiator.Initialize(usLengthMinBits, usLengthMaxBits,
+		usLengthRecommendBits, usIdMinBits, usIdMaxBits, usIdRecommendBits,
+		usRequestQuickInit, usAllowQuickInit); err != nil {
+
+		t.Error(err)
+	}
+
+	message := buildInitMsg(themVersion, themLengthMinBits, themLengthMaxBits, themLengthRecommendBits,
+		themIdMinBits, themIdMaxBits, themIdRecommendBits, themRequestQuickInit, themAllowQuickInit)
+
+	messageAfter, err := negotiator.Feed(message)
+	if len(messageAfter) != 0 {
+		t.Errorf("Expected all %v bytes to be used, but %v bytes remain", len(message), len(messageAfter))
+	}
+	if err != nil {
+		t.Error(err)
+	}
+
+	if negotiator.LengthBits != expectLengthBits {
+		t.Errorf("Expected Length bits %v, but got %v", expectLengthBits, negotiator.LengthBits)
+	}
+
+	if negotiator.IdBits != expectIdBits {
+		t.Errorf("Expected ID bits %v, but got %v", expectIdBits, negotiator.IdBits)
+	}
+}
+
 // =============================================================================
 
 // General (init)
@@ -332,4 +370,22 @@ func TestFullIdRecGtMax(t *testing.T) {
 
 func TestFullIdRecLtMin(t *testing.T) {
 	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 1, 2, 0, false, false)
+}
+
+// Spec Examples
+
+func TestNegotiationSpecCompatible(t *testing.T) {
+	assertNegotiation(t, 6, 20, 14, 6, 12, 8, false, false, 1, 5, 15, 15, 6, 15, 7, false, false, 14, 7)
+}
+
+func TestNegotiationSpecIdMinGtMax(t *testing.T) {
+	assertNegotiationFail(t, 5, 12, 12, 6, 8, 8, false, false, 1, 5, 15, 15, 10, 15, 10, false, false)
+}
+
+func TestNegotiationSpecWildcardGt30(t *testing.T) {
+	assertNegotiation(t, 6, 20, 31, 6, 16, 14, false, false, 1, 15, 18, 31, 6, 18, 15, false, false, 16, 14)
+}
+
+func TestNegotiationSpecAllWildcard(t *testing.T) {
+	assertNegotiation(t, 6, 20, 31, 6, 16, 31, false, false, 1, 8, 15, 31, 6, 18, 31, false, false, 12, 11)
 }
