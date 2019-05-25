@@ -299,22 +299,26 @@ func TestFullVersion(t *testing.T) {
 	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 50, 1, 30, 15, 0, 29, 15, false, false)
 }
 
-func TestFullWildcard(t *testing.T) {
-	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 0, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
-	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
-	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
-	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 0, false, false)
-	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
-	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
-	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 1, 0, 0, 0, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 0, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
-	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
+func TestNegotiationFullWildcard(t *testing.T) {
+	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 10, 9)
+	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 10, 11)
+	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 10, 9)
+	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 10, 11)
+
+	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 10, 9)
+	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 10, 13)
+	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 10, 9)
+	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 10, 13)
+
+	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 18, 9)
+	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 18, 11)
+	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 13, 9)
+	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 13, 11)
+
+	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 18, 9)
+	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 17, 13)
+	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 13, 9)
+	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 13, 13)
 }
 
 // Length (full)
@@ -363,28 +367,6 @@ func TestFullIdRecGtMax(t *testing.T) {
 
 func TestFullIdRecLtMin(t *testing.T) {
 	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 1, 2, 0, false, false)
-}
-
-func TestNegotiationFullWildcard(t *testing.T) {
-	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 10, 9)
-	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 10, 11)
-	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 10, 9)
-	assertNegotiation(t, 6, 20, 10, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 10, 11)
-
-	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 10, 9)
-	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 10, 13)
-	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 10, 9)
-	assertNegotiation(t, 6, 20, 10, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 10, 13)
-
-	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 18, 9)
-	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 18, 11)
-	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 13, 9)
-	assertNegotiation(t, 6, 20, 31, 9, 16, 11, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 13, 11)
-
-	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 8, false, false, 18, 9)
-	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 18, 6, 18, 31, false, false, 17, 13)
-	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 8, false, false, 13, 9)
-	assertNegotiation(t, 6, 20, 31, 9, 16, 31, false, false, 1, 8, 18, 31, 6, 18, 31, false, false, 13, 13)
 }
 
 // Spec Examples
