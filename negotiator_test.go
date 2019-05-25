@@ -144,64 +144,192 @@ func TestInitValid(t *testing.T) {
 	assertNegotiationInitSuccess(t, 1, 1, 1, 0, 0, 0, false, false)
 }
 
+func TestInitWildcard(t *testing.T) {
+	assertNegotiationInitSuccess(t, 1, 1, 1, 0, 0, 31, false, false)
+	assertNegotiationInitSuccess(t, 1, 1, 31, 0, 0, 0, false, false)
+	assertNegotiationInitSuccess(t, 1, 1, 31, 0, 0, 31, false, false)
+}
+
 // Length (init)
 
-func TestMinLengthTooLow(t *testing.T) {
+func TestInitMinLengthTooLow(t *testing.T) {
 	assertNegotiationInitFail(t, 0, 1, 1, 0, 0, 0, false, false)
 }
 
-func TestMinLengthTooHigh(t *testing.T) {
+func TestInitMinLengthTooHigh(t *testing.T) {
 	assertNegotiationInitFail(t, 16, 16, 1, 0, 0, 0, false, false)
 }
 
-func TestMaxLengthTooLow(t *testing.T) {
+func TestInitMaxLengthTooLow(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 0, 1, 0, 0, 0, false, false)
 }
 
-func TestMaxLengthTooHigh(t *testing.T) {
+func TestInitMaxLengthTooHigh(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 31, 1, 0, 0, 0, false, false)
 }
 
-func TestRecLengthTooLow(t *testing.T) {
+func TestInitRecLengthTooLow(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 1, 0, 0, 0, 0, false, false)
 }
 
-func TestRecLengthTooHigh(t *testing.T) {
+func TestInitRecLengthTooHigh(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 1, 32, 0, 0, 0, false, false)
+}
+
+func TestInitLengthMinGtMax(t *testing.T) {
+	assertNegotiationInitFail(t, 2, 1, 2, 0, 0, 0, false, false)
+}
+
+func TestInitLengthRecGtMax(t *testing.T) {
+	assertNegotiationInitFail(t, 1, 1, 10, 0, 0, 0, false, false)
+}
+
+func TestInitLengthRecLtMin(t *testing.T) {
+	assertNegotiationInitFail(t, 2, 2, 1, 0, 0, 0, false, false)
 }
 
 // ID (init)
 
-func TestMinIdTooLow(t *testing.T) {
+func TestInitMinIdTooLow(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 1, 1, -1, 0, 0, false, false)
 }
 
-func TestMinIdTooHigh(t *testing.T) {
+func TestInitMinIdTooHigh(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 1, 1, 16, 0, 0, false, false)
 }
 
-func TestMaxIdTooLow(t *testing.T) {
+func TestInitMaxIdTooLow(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 1, 1, 0, -1, 0, false, false)
 }
 
-func TestMaxIdTooHigh(t *testing.T) {
-	assertNegotiationInitFail(t, 1, 1, 1, 0, 31, 0, false, false)
+func TestInitMaxIdTooHigh(t *testing.T) {
+	assertNegotiationInitFail(t, 1, 1, 1, 0, 30, 0, false, false)
 }
 
-func TestRecIdTooLow(t *testing.T) {
+func TestInitRecIdTooLow(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 1, 1, 0, 0, -1, false, false)
 }
 
-func TestRecIdTooHigh(t *testing.T) {
+func TestInitRecIdTooHigh(t *testing.T) {
 	assertNegotiationInitFail(t, 1, 1, 1, 0, 0, 32, false, false)
 }
 
-// General
+func TestInitIdMinGtMax(t *testing.T) {
+	assertNegotiationInitFail(t, 1, 1, 1, 1, 0, 1, false, false)
+}
+
+func TestInitIdRecGtMax(t *testing.T) {
+	assertNegotiationInitFail(t, 1, 1, 1, 0, 1, 2, false, false)
+}
+
+func TestInitIdRecLtMin(t *testing.T) {
+	assertNegotiationInitFail(t, 1, 1, 1, 1, 2, 0, false, false)
+}
+
+// General (full)
 
 func TestFullValid(t *testing.T) {
 	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 0, false, false, 1, 1, 1, 1, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 30, 15, 0, 29, 15, false, false)
 }
 
-// Length
+func TestFullVersion(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 0, 1, 30, 15, 0, 29, 15, false, false)
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 50, 1, 30, 15, 0, 29, 15, false, false)
+}
 
-// ID
+func TestFullWildcard(t *testing.T) {
+	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 0, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
+	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
+	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
+	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 1, 1, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 1, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 0, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 1, 0, 0, 31, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 0, false, false)
+	assertNegotiationSuccess(t, 1, 1, 31, 0, 0, 31, false, false, 1, 1, 1, 31, 0, 0, 31, false, false)
+}
+
+// Length (full)
+
+func TestFullMinLengthTooLow(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 0, 1, 1, 0, 0, 0, false, false)
+}
+
+func TestFullMinLengthTooHigh(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 16, 16, 1, 0, 0, 0, false, false)
+}
+
+func TestFullMaxLengthTooLow(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 0, 1, 0, 0, 0, false, false)
+}
+
+func TestFullMaxLengthTooHigh(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 31, 1, 0, 0, 0, false, false)
+}
+
+func TestFullRecLengthTooLow(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 0, 0, 0, 0, false, false)
+}
+
+func TestFullRecLengthTooHigh(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 32, 0, 0, 0, false, false)
+}
+
+func TestFullLengthMinGtMax(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 2, 1, 2, 0, 0, 0, false, false)
+}
+
+func TestFullLengthRecGtMax(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 10, 0, 0, 0, false, false)
+}
+
+func TestFullLengthRecLtMin(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 2, 2, 1, 0, 0, 0, false, false)
+}
+
+// ID (full)
+
+func TestFullMinIdTooLow(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, -1, 0, 0, false, false)
+}
+
+func TestFullMinIdTooHigh(t *testing.T) {
+	// This can't fail because min ID is encoded into 4 bits
+	assertNegotiationSuccess(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 16, 0, 0, false, false)
+}
+
+func TestFullMaxIdTooLow(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 0, -1, 0, false, false)
+}
+
+func TestFullMaxIdTooHigh(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 0, 30, 0, false, false)
+}
+
+func TestFullRecIdTooLow(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 0, 0, -1, false, false)
+}
+
+func TestFullRecIdTooHigh(t *testing.T) {
+	// This can't fail because recommended ID is encoded into 5 bits
+	assertNegotiationSuccess(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 0, 0, 32, false, false)
+}
+
+func TestFullIdMinGtMax(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 1, 0, 1, false, false)
+}
+
+func TestFullIdRecGtMax(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 0, 1, 2, false, false)
+}
+
+func TestFullIdRecLtMin(t *testing.T) {
+	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 1, 2, 0, false, false)
+}

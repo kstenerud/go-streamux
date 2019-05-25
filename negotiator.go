@@ -20,8 +20,8 @@ type negotiator_ struct {
 }
 
 const (
-	shiftQuickInitRequest      = 30
-	shiftQuickInitAllowed      = 29
+	shiftQuickInitRequest      = 29
+	shiftQuickInitAllowed      = 28
 	shiftLengthBitsMin         = 24
 	shiftLengthBitsMax         = 19
 	shiftLengthBitsRecommended = 14
@@ -115,7 +115,7 @@ func capBitCounts(idBits, lengthBits int) (idBitsCapped, lengthBitsCapped int) {
 	return idBitsCapped, lengthBitsCapped
 }
 
-func validateMinMaxValue(name string, value int, min int, max int) error {
+func validateMinMaxLimits(name string, value int, min int, max int) error {
 	if value < min {
 		return fmt.Errorf("%v has value %v, which is less than the minimum of %v", name, value, min)
 	}
@@ -125,31 +125,68 @@ func validateMinMaxValue(name string, value int, min int, max int) error {
 	return nil
 }
 
+func validateMinMaxField(name string, min int, max int) error {
+	if min > max {
+		return fmt.Errorf("%v min value (%v) is greater than max value (%v)", name, min, max)
+	}
+	return nil
+}
+
+func validateMinMaxRecommend(name string, min int, max int, recommend int) error {
+	if recommend == recommendedWildcard {
+		return nil
+	}
+
+	if recommend < min {
+		return fmt.Errorf("recommended %v (%v) is less than max %v (%v)", name, recommend, name, max)
+	}
+	if recommend > max {
+		return fmt.Errorf("recommended %v (%v) is greater than min %v (%v)", name, recommend, name, min)
+	}
+	return nil
+}
+
 func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
 	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
 	requestQuickInit int, allowQuickInit int) error {
 
-	if err := validateMinMaxValue("min length", lengthMinBits, 1, 15); err != nil {
+	if err := validateMinMaxLimits("min length", lengthMinBits, 1, 15); err != nil {
 		return err
 	}
 
-	if err := validateMinMaxValue("max length", lengthMaxBits, 1, 30); err != nil {
+	if err := validateMinMaxLimits("max length", lengthMaxBits, 1, 30); err != nil {
 		return err
 	}
 
-	if err := validateMinMaxValue("recommended length", lengthRecommendBits, 1, 31); err != nil {
+	if err := validateMinMaxField("length", lengthMinBits, lengthMaxBits); err != nil {
 		return err
 	}
 
-	if err := validateMinMaxValue("min ID", idMinBits, 0, 15); err != nil {
+	if err := validateMinMaxLimits("recommended length", lengthRecommendBits, 1, 31); err != nil {
 		return err
 	}
 
-	if err := validateMinMaxValue("max ID", idMaxBits, 0, 30); err != nil {
+	if err := validateMinMaxRecommend("length", lengthMinBits, lengthMaxBits, lengthRecommendBits); err != nil {
 		return err
 	}
 
-	if err := validateMinMaxValue("recommended ID", idRecommendBits, 0, 31); err != nil {
+	if err := validateMinMaxLimits("min ID", idMinBits, 0, 15); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxLimits("max ID", idMaxBits, 0, 29); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxField("ID", idMinBits, idMaxBits); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxLimits("recommended ID", idRecommendBits, 0, 31); err != nil {
+		return err
+	}
+
+	if err := validateMinMaxRecommend("ID", idMinBits, idMaxBits, idRecommendBits); err != nil {
 		return err
 	}
 
@@ -200,9 +237,15 @@ func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
 	themLengthBits := int((message >> shiftLengthBitsRecommended) & maskRecommended)
 	themLengthMaxBits := int((message >> shiftLengthBitsMax) & maskMax)
 	themLengthMinBits := int((message >> shiftLengthBitsMin) & maskMin)
-	// TODO
-	// themRequestQuickInit := int((message >> shiftQuickInitRequest) & maskRecommended)
-	// themAllowQuickInit := int((message >> shiftQuickInitAllowed) & 1)
+	themRequestQuickInit := int((message >> shiftQuickInitRequest) & 1)
+	themAllowQuickInit := int((message >> shiftQuickInitAllowed) & 1)
+
+	if err := validateInitializeFields(themLengthMinBits, themLengthMaxBits,
+		themLengthBits, themIdMinBits, themIdMaxBits, themIdBits,
+		themRequestQuickInit, themAllowQuickInit); err != nil {
+
+		return err
+	}
 
 	idBits, err := negotiateBitCount("ID", this.idMinBits,
 		this.idMaxBits, this.IdBits,
