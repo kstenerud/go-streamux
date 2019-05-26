@@ -23,9 +23,10 @@ type MessageSendCallbacks interface {
 }
 
 type Protocol struct {
+	hasStarted bool
 	negotiator negotiator_
 	decoder    messageDecoder_
-	idPool     *IdPool
+	idPool     IdPool
 	callbacks  MessageSendCallbacks
 }
 
@@ -47,14 +48,31 @@ func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	receiveCallbacks MessageReceiveCallbacks) *Protocol {
 
 	this := new(Protocol)
-	this.negotiator.Initialize(lengthMinBits, lengthMaxBits, lengthRecommendBits,
-		idMinBits, idMaxBits, idRecommendBits, requestQuickInit, allowQuickInit)
-	this.callbacks = sendCallbacks
-	this.decoder.callbacks = receiveCallbacks
-
-	this.sendMessageChunk(priorityOOB, this.negotiator.BuildInitializeMessage())
+	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
+		idMinBits, idMaxBits, idRecommendBits,
+		requestQuickInit, allowQuickInit,
+		sendCallbacks, receiveCallbacks)
 
 	return this
+}
+
+func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+	idMinBits int, idMaxBits int, idRecommendBits int, requestQuickInit bool,
+	allowQuickInit bool, sendCallbacks MessageSendCallbacks,
+	receiveCallbacks MessageReceiveCallbacks) {
+
+	this.negotiator.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
+		idMinBits, idMaxBits, idRecommendBits,
+		requestQuickInit, allowQuickInit)
+	this.callbacks = sendCallbacks
+	this.decoder.callbacks = receiveCallbacks
+}
+
+func (this *Protocol) Start() {
+	if !this.hasStarted {
+		this.hasStarted = true
+		this.sendMessageChunk(priorityOOB, this.negotiator.BuildInitializeMessage())
+	}
 }
 
 func (this *Protocol) SendMessage(priority int, contents []byte) {
@@ -72,27 +90,30 @@ func (this *Protocol) SendResponseMessage(priority int, responseToId int, conten
 }
 
 func (this *Protocol) BeginMessage(priority int) *SendableMessage {
+	this.Start()
 	isResponse := false
 	return newSendableMessage(this, priority, this.allocateId(),
-		this.negotiator.HeaderLength, this.negotiator.IdBits,
-		this.negotiator.LengthBits, isResponse)
+		this.negotiator.HeaderLength, this.negotiator.LengthBits,
+		this.negotiator.IdBits, isResponse)
 }
 
 func (this *Protocol) BeginResponseMessage(priority int, responseToId int) *SendableMessage {
+	this.Start()
 	isResponse := true
 	return newSendableMessage(this, priority, this.allocateId(),
-		this.negotiator.HeaderLength, this.negotiator.IdBits,
-		this.negotiator.LengthBits, isResponse)
+		this.negotiator.HeaderLength, this.negotiator.LengthBits,
+		this.negotiator.IdBits, isResponse)
 }
 
 func (this *Protocol) Feed(incomingStreamData []byte) error {
+	this.Start()
 	if !this.negotiator.IsNegotiated {
 		var err error
 		if incomingStreamData, err = this.negotiator.Feed(incomingStreamData); err != nil {
 			return err
 		}
 		if this.negotiator.IsNegotiated {
-			this.decoder.Initialize(this.negotiator.HeaderLength, this.negotiator.IdBits, this.negotiator.LengthBits)
+			this.decoder.Initialize(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits)
 		}
 	}
 

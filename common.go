@@ -1,5 +1,10 @@
 package streamux
 
+const (
+	shiftResponseBit = 1
+	shiftId          = 2
+)
+
 func useBytes(byteCount int, buffer []byte) (usedPortion []byte, remainingPortion []byte) {
 	usedPortion = buffer[:byteCount]
 	remainingPortion = buffer[byteCount:len(buffer)]

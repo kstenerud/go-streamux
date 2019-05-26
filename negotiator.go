@@ -68,8 +68,8 @@ func midpointInt(a, b int) int {
 	return result
 }
 
-func calculateHeaderLength(idBits, lengthBits int) int {
-	totalBits := idBits + lengthBits
+func calculateHeaderLength(lengthBits, idBits int) int {
+	totalBits := lengthBits + idBits
 	switch {
 	case totalBits <= 6:
 		return 1
@@ -85,7 +85,7 @@ func negotiateBitCount(name string, usMin int, usMax int, usRecommended int, the
 	min := maxInt(usMin, themMin)
 	max := minInt(usMax, themMax)
 	if max < min {
-		return -1, fmt.Errorf("Negotiation failed: %v max (%v) is less than min (%v)", name, max, min)
+		return -1, fmt.Errorf("Negotiation failed: max %v (%v) is less than min %v (%v)", name, max, name, min)
 	}
 
 	recommended := minInt(usRecommended, themRecommended)
@@ -98,7 +98,7 @@ func negotiateBitCount(name string, usMin int, usMax int, usRecommended int, the
 	return negotiated, nil
 }
 
-func capBitCounts(idBits, lengthBits int) (idBitsCapped, lengthBitsCapped int) {
+func capBitCounts(lengthBits, idBits int) (lengthBitsCapped, idBitsCapped int) {
 	idBitsCapped = idBits
 	lengthBitsCapped = lengthBits
 	if lengthBits+idBits > maxTotalBits {
@@ -114,22 +114,22 @@ func capBitCounts(idBits, lengthBits int) (idBitsCapped, lengthBitsCapped int) {
 			idBitsCapped = maxTotalBits - lengthBits
 		}
 	}
-	return idBitsCapped, lengthBitsCapped
+	return lengthBitsCapped, idBitsCapped
 }
 
 func validateMinMaxLimits(name string, value int, min int, max int) error {
 	if value < min {
-		return fmt.Errorf("%v has value %v, which is less than the minimum of %v", name, value, min)
+		return fmt.Errorf("Negotiation failed: %v (%v) is less than min %v (%v)", name, value, name, min)
 	}
 	if value > max {
-		return fmt.Errorf("%v has value %v, which is greater than the minimum of %v", name, value, min)
+		return fmt.Errorf("Negotiation failed: %v (%v) is greater than max %v (%v)", name, value, name, max)
 	}
 	return nil
 }
 
 func validateMinMaxField(name string, min int, max int) error {
 	if min > max {
-		return fmt.Errorf("%v min value (%v) is greater than max value (%v)", name, min, max)
+		return fmt.Errorf("Negotiation failed: min %v (%v) is greater than max %v (%v)", name, min, name, max)
 	}
 	return nil
 }
@@ -140,10 +140,10 @@ func validateMinMaxRecommend(name string, min int, max int, recommend int) error
 	}
 
 	if recommend < min {
-		return fmt.Errorf("recommended %v (%v) is less than max %v (%v)", name, recommend, name, max)
+		return fmt.Errorf("Negotiation failed: recommended %v (%v) is less than min %v (%v)", name, recommend, name, min)
 	}
 	if recommend > max {
-		return fmt.Errorf("recommended %v (%v) is greater than min %v (%v)", name, recommend, name, min)
+		return fmt.Errorf("Negotiation failed: recommended %v (%v) is greater than max %v (%v)", name, recommend, name, max)
 	}
 	return nil
 }
@@ -195,9 +195,21 @@ func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
 	return nil
 }
 
-func (this *negotiator_) Initialize(lengthMinBits int, lengthMaxBits int,
+func newNegotiator(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+	idMinBits int, idMaxBits int, idRecommendBits int,
+	requestQuickInit bool, allowQuickInit bool) *negotiator_ {
+
+	this := new(negotiator_)
+	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
+		idMinBits, idMaxBits, idRecommendBits,
+		requestQuickInit, allowQuickInit)
+
+	return this
+}
+
+func (this *negotiator_) Init(lengthMinBits int, lengthMaxBits int,
 	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
-	requestQuickInit bool, allowQuickInit bool) error {
+	requestQuickInit bool, allowQuickInit bool) {
 
 	this.lengthMinBits = lengthMinBits
 	this.lengthMaxBits = lengthMaxBits
@@ -216,11 +228,10 @@ func (this *negotiator_) Initialize(lengthMinBits int, lengthMaxBits int,
 
 	if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
 		this.idMinBits, this.idMaxBits, this.IdBits, this.requestQuickInit, this.allowQuickInit); err != nil {
-		return err
+		panic(err)
 	}
 
 	this.messageBuffer = make([]byte, 0, initializeMessageLength)
-	return nil
 }
 
 func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
@@ -228,10 +239,11 @@ func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
 	if version != protocolVersion {
 		return fmt.Errorf("Negotiation failed: Expected protocol version %v, but got %v", protocolVersion, version)
 	}
-	message := uint(data[1]) |
-		uint(data[2])<<8 |
-		uint(data[3])<<16 |
-		uint(data[4])<<24
+	message :=
+		uint(data[1])<<24 |
+			uint(data[2])<<16 |
+			uint(data[3])<<8 |
+			uint(data[4])
 
 	themIdBits := int(message & maskRecommended)
 	themIdMaxBits := int((message >> shiftIdBitsMax) & maskMax)
@@ -263,8 +275,8 @@ func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
 		return err
 	}
 
-	this.IdBits, this.LengthBits = capBitCounts(idBits, lengthBits)
-	this.HeaderLength = calculateHeaderLength(this.IdBits, this.LengthBits)
+	this.LengthBits, this.IdBits = capBitCounts(lengthBits, idBits)
+	this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
 
 	return nil
 }

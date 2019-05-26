@@ -7,21 +7,20 @@ import (
 type SendableMessage struct {
 	Id int
 
-	protocol           *Protocol
-	priority           int
+	// Per-message constants
+	maxChunkLength     int
+	headerLength       int
 	responseBitShifted uint32
 	idShifted          uint32
-	lengthShift        uint
-	headerLength       int
-	maxChunkLength     int
-	data               []byte
-	isClosed           bool
-}
+	shiftLength        uint
 
-const (
-	shiftResponseBit = 1
-	shiftId          = 2
-)
+	priority int
+
+	data []byte
+
+	isClosed bool
+	protocol *Protocol
+}
 
 func boolToUint32(value bool) uint32 {
 	if value {
@@ -38,7 +37,7 @@ func (this *SendableMessage) fillHeader(terminationBit uint32) {
 	headerFields := terminationBit |
 		this.responseBitShifted |
 		this.idShifted |
-		uint32(this.dataLength())<<this.lengthShift
+		uint32(this.dataLength())<<this.shiftLength
 
 	for i := 0; i < this.headerLength; i++ {
 		this.data[i] = byte(headerFields)
@@ -49,40 +48,41 @@ func (this *SendableMessage) fillHeader(terminationBit uint32) {
 func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) {
 	this.fillHeader(terminationBit)
 	this.protocol.sendMessageChunk(this.priority, this.data)
+	this.data = this.data[0:this.headerLength]
 }
 
-func newSendableMessage(protocol *Protocol, priority int, id int, headerLength int, idBits int, lengthBits int, isResponse bool) *SendableMessage {
+func newSendableMessage(protocol *Protocol, priority int, id int, headerLength int, lengthBits int, idBits int, isResponse bool) *SendableMessage {
 	this := new(SendableMessage)
 	this.protocol = protocol
 	this.priority = priority
 	this.Id = id
 	this.idShifted = uint32(id) << shiftId
+	this.responseBitShifted = boolToUint32(isResponse) << shiftResponseBit
+	this.shiftLength = uint(shiftId + idBits)
 	this.headerLength = headerLength
 	this.maxChunkLength = 1<<uint(lengthBits) - 1
 	this.data = make([]byte, this.headerLength, this.maxChunkLength)
-	this.responseBitShifted = boolToUint32(isResponse) << shiftResponseBit
-	this.lengthShift = uint(shiftId + idBits)
 
 	return this
 }
 
-func (this *SendableMessage) AddData(data []byte, isEndOfData bool) {
+func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) {
 	if this.isClosed {
 		panic(fmt.Errorf("Message has been closed"))
 	}
 
-	for len(data) > 0 {
-		currentLength := this.dataLength()
-		lengthToAdd := len(data)
-		if currentLength+lengthToAdd > this.maxChunkLength {
-			lengthToAdd = this.maxChunkLength - currentLength
+	for len(bytesToSend) > 0 {
+		filledByteCount := this.dataLength()
+		toSendByteCount := len(bytesToSend)
+		if filledByteCount+toSendByteCount > this.maxChunkLength {
+			toSendByteCount = this.maxChunkLength - filledByteCount
 		}
-		this.data = append(this.data, data[:lengthToAdd]...)
-		currentLength = this.dataLength()
-		if currentLength == this.maxChunkLength {
+		bytesToAppend := bytesToSend[:toSendByteCount]
+		bytesToSend = bytesToSend[toSendByteCount:]
+		this.data = append(this.data, bytesToAppend...)
+		if this.dataLength() == this.maxChunkLength {
 			dontTerminateMessage := uint32(0)
 			this.sendCurrentChunk(dontTerminateMessage)
-			data = data[lengthToAdd:]
 		}
 	}
 

@@ -32,42 +32,55 @@ func buildInitMsg(version, minLen, maxLen, recLen, minId, maxId, recId int, qiRe
 
 	msg := make([]byte, 5)
 	msg[0] = byte(version)
-	msg[1] = byte(fields & 0xff)
-	msg[2] = byte((fields >> 8) & 0xff)
-	msg[3] = byte((fields >> 16) & 0xff)
-	msg[4] = byte((fields >> 24) & 0xff)
+	msg[1] = byte((fields >> 24) & 0xff)
+	msg[2] = byte((fields >> 16) & 0xff)
+	msg[3] = byte((fields >> 8) & 0xff)
+	msg[4] = byte(fields & 0xff)
 
 	return msg
 }
 
-func performNegotiationInit(
-	usLengthMinBits int, usLengthMaxBits int, usLengthRecommendBits int,
-	usIdMinBits int, usIdMaxBits int, usIdRecommendBits int,
-	usRequestQuickInit bool, usAllowQuickInit bool) error {
+func assertNegotiationInitSuccess(t *testing.T,
+	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+	idMinBits int, idMaxBits int, idRecommendBits int,
+	requestQuickInit bool, allowQuickInit bool) {
 
-	var negotiator negotiator_
-	return negotiator.Initialize(
-		usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
-		usIdMinBits, usIdMaxBits, usIdRecommendBits,
-		usRequestQuickInit, usAllowQuickInit)
+	assertDoesNotPanic(t, func() {
+		newNegotiator(
+			lengthMinBits, lengthMaxBits, lengthRecommendBits,
+			idMinBits, idMaxBits, idRecommendBits,
+			requestQuickInit, allowQuickInit)
+	})
 }
 
-func performNegotiation(
+func assertNegotiationInitFail(t *testing.T,
+	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+	idMinBits int, idMaxBits int, idRecommendBits int,
+	requestQuickInit bool, allowQuickInit bool) {
+
+	assertDoesPanic(t, func() {
+		newNegotiator(
+			lengthMinBits, lengthMaxBits, lengthRecommendBits,
+			idMinBits, idMaxBits, idRecommendBits,
+			requestQuickInit, allowQuickInit)
+	})
+}
+
+func performNegotiation(t *testing.T,
 	usLengthMinBits int, usLengthMaxBits int, usLengthRecommendBits int,
 	usIdMinBits int, usIdMaxBits int, usIdRecommendBits int,
 	usRequestQuickInit bool, usAllowQuickInit bool, themVersion int,
 	themLengthMinBits int, themLengthMaxBits int, themLengthRecommendBits int,
 	themIdMinBits int, themIdMaxBits int, themIdRecommendBits int,
-	themRequestQuickInit bool, themAllowQuickInit bool) error {
+	themRequestQuickInit bool, themAllowQuickInit bool) (lengthBits int, idBits int, err error) {
 
 	var negotiator negotiator_
-	if err := negotiator.Initialize(
-		usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
-		usIdMinBits, usIdMaxBits, usIdRecommendBits,
-		usRequestQuickInit, usAllowQuickInit); err != nil {
-
-		return err
-	}
+	assertDoesNotPanic(t, func() {
+		negotiator.Init(
+			usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
+			usIdMinBits, usIdMaxBits, usIdRecommendBits,
+			usRequestQuickInit, usAllowQuickInit)
+	})
 
 	message := buildInitMsg(themVersion,
 		themLengthMinBits, themLengthMaxBits, themLengthRecommendBits,
@@ -76,38 +89,10 @@ func performNegotiation(
 
 	messageAfter, err := negotiator.Feed(message)
 	if len(messageAfter) != 0 {
-		return fmt.Errorf("Expected all %v bytes to be used, but %v bytes remain", len(message), len(messageAfter))
+		return 0, 0, fmt.Errorf("Expected all %v bytes to be used, but %v bytes remain", len(message), len(messageAfter))
 	}
 
-	return err
-}
-
-func assertNegotiationInitSuccess(t *testing.T,
-	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
-	idMinBits int, idMaxBits int, idRecommendBits int,
-	requestQuickInit bool, allowQuickInit bool) {
-
-	if err := performNegotiationInit(
-		lengthMinBits, lengthMaxBits, lengthRecommendBits,
-		idMinBits, idMaxBits, idRecommendBits,
-		requestQuickInit, allowQuickInit); err != nil {
-
-		t.Error(err)
-	}
-}
-
-func assertNegotiationInitFail(t *testing.T,
-	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
-	idMinBits int, idMaxBits int, idRecommendBits int,
-	requestQuickInit bool, allowQuickInit bool) {
-
-	if err := performNegotiationInit(
-		lengthMinBits, lengthMaxBits, lengthRecommendBits,
-		idMinBits, idMaxBits, idRecommendBits,
-		requestQuickInit, allowQuickInit); err == nil {
-
-		t.Errorf("Negotiation init should have failed but didn't")
-	}
+	return negotiator.LengthBits, negotiator.IdBits, err
 }
 
 func assertNegotiationSuccess(t *testing.T,
@@ -119,7 +104,7 @@ func assertNegotiationSuccess(t *testing.T,
 	themIdMinBits int, themIdMaxBits int, themIdRecommendBits int,
 	themRequestQuickInit bool, themAllowQuickInit bool) {
 
-	if err := performNegotiation(
+	if _, _, err := performNegotiation(t,
 		usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
 		usIdMinBits, usIdMaxBits, usIdRecommendBits,
 		usRequestQuickInit, usAllowQuickInit, themVersion,
@@ -139,7 +124,7 @@ func assertNegotiationFail(t *testing.T,
 	themIdMinBits int, themIdMaxBits int, themIdRecommendBits int,
 	themRequestQuickInit bool, themAllowQuickInit bool) {
 
-	if err := performNegotiation(
+	if _, _, err := performNegotiation(t,
 		usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
 		usIdMinBits, usIdMaxBits, usIdRecommendBits,
 		usRequestQuickInit, usAllowQuickInit, themVersion,
@@ -160,40 +145,31 @@ func assertNegotiation(t *testing.T,
 	themRequestQuickInit bool, themAllowQuickInit bool,
 	expectLengthBits int, expectIdBits int) {
 
-	var negotiator negotiator_
-	if err := negotiator.Initialize(
+	lengthBits, idBits, err := performNegotiation(t,
 		usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
 		usIdMinBits, usIdMaxBits, usIdRecommendBits,
-		usRequestQuickInit, usAllowQuickInit); err != nil {
-
-		t.Error(err)
-	}
-
-	message := buildInitMsg(themVersion,
+		usRequestQuickInit, usAllowQuickInit, themVersion,
 		themLengthMinBits, themLengthMaxBits, themLengthRecommendBits,
 		themIdMinBits, themIdMaxBits, themIdRecommendBits,
 		themRequestQuickInit, themAllowQuickInit)
 
-	messageAfter, err := negotiator.Feed(message)
-	if len(messageAfter) != 0 {
-		t.Errorf("Expected all %v bytes to be used, but %v bytes remain", len(message), len(messageAfter))
-	}
 	if err != nil {
 		t.Error(err)
+		return
 	}
 
-	if negotiator.LengthBits != expectLengthBits {
+	if lengthBits != expectLengthBits {
 		t.Errorf("Expected Length bits (min %v, max %v, rec %v) (min %v, max %v, rec %v) to be %v, but got %v",
 			usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
 			themLengthMinBits, themLengthMaxBits, themLengthRecommendBits,
-			expectLengthBits, negotiator.LengthBits)
+			expectLengthBits, lengthBits)
 	}
 
-	if negotiator.IdBits != expectIdBits {
+	if idBits != expectIdBits {
 		t.Errorf("Expected ID bits (min %v, max %v, rec %v) (min %v, max %v, rec %v) to be %v, but got %v",
 			usIdMinBits, usIdMaxBits, usIdRecommendBits,
 			themIdMinBits, themIdMaxBits, themIdRecommendBits,
-			expectIdBits, negotiator.IdBits)
+			expectIdBits, idBits)
 	}
 }
 
