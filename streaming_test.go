@@ -68,5 +68,7 @@ func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
 }
 
 func TestStream(t *testing.T) {
-	assertStreamData(t, 10, 10, 10000)
+	for i := 20; i >= 2; i-- {
+		assertStreamData(t, i, 10, 100000)
+	}
 }
