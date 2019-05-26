@@ -362,3 +362,8 @@ func TestNegotiationSpecWildcardGt30(t *testing.T) {
 func TestNegotiationSpecAllWildcard(t *testing.T) {
 	assertNegotiation(t, 6, 20, 31, 6, 16, 31, false, false, 1, 8, 15, 31, 6, 18, 31, false, false, 12, 11)
 }
+
+// TODO: Quick init success
+// TODO: Quick init not accepting
+// TODO: Quick init values bigger than max, smaller than min
+// TODO: Quic init invalid fields

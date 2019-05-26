@@ -71,4 +71,15 @@ func TestStream(t *testing.T) {
 	for i := 20; i >= 2; i-- {
 		assertStreamData(t, i, 10, 100000)
 	}
+	for i := 20; i >= 2; i-- {
+		assertStreamData(t, i, 2, 99999)
+	}
+}
+
+func TestEmpty(t *testing.T) {
+	// TODO: Length 30 should be possible.
+	// TODO: ID 0 should be possible
+	for i := 29; i >= 2; i-- {
+		assertStreamData(t, i, 1, 0)
+	}
 }
