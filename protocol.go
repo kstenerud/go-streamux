@@ -29,7 +29,7 @@ type Protocol struct {
 	hasStarted       bool
 	negotiator       *negotiator_
 	decoder          *messageDecoder_
-	idPool           *IdPool
+	idPool           *idPool
 	callbacks        MessageSendCallbacks
 	decoderCallbacks MessageReceiveCallbacks
 }
@@ -85,7 +85,7 @@ func (this *Protocol) feedNegotiator(incomingStreamData []byte) ([]byte, error) 
 
 func (this *Protocol) completeNegotiation() {
 	this.decoder = newMessageDecoder(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits, this.decoderCallbacks)
-	this.idPool = NewIdPool(this.negotiator.IdBits)
+	this.idPool = newIdPool(this.negotiator.IdBits)
 }
 
 func (this *Protocol) isNegotiationComplete() bool {

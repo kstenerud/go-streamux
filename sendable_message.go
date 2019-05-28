@@ -19,7 +19,7 @@ type SendableMessage struct {
 	data []byte
 
 	isClosed  bool
-	idPool    *IdPool
+	idPool    *idPool
 	callbacks MessageSendCallbacks
 }
 
@@ -55,7 +55,7 @@ func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) error {
 	return nil
 }
 
-func newSendableMessage(idPool *IdPool, callbacks MessageSendCallbacks,
+func newSendableMessage(idPool *idPool, callbacks MessageSendCallbacks,
 	priority int, id int, headerLength int, lengthBits int, idBits int,
 	isResponse bool) *SendableMessage {
 
