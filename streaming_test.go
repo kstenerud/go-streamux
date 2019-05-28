@@ -40,11 +40,11 @@ func newStreamerPair(t *testing.T, lengthBits, idBits int) (a, b *testStreamer) 
 
 	a.t = t
 	a.peer = b
-	a.protocol = NewProtocol(1, 29, lengthBits, 1, 29, idBits, false, false, a, a)
+	a.protocol = NewProtocol(1, 30, lengthBits, 0, 29, idBits, false, false, a, a)
 
 	b.t = t
 	b.peer = a
-	b.protocol = NewProtocol(1, 29, lengthBits, 1, 29, idBits, false, false, b, b)
+	b.protocol = NewProtocol(1, 30, lengthBits, 0, 29, idBits, false, false, b, b)
 
 	return a, b
 }
@@ -77,9 +77,7 @@ func TestStream(t *testing.T) {
 }
 
 func TestEmpty(t *testing.T) {
-	// TODO: Length 30 should be possible.
-	// TODO: ID 0 should be possible
 	for i := 29; i >= 2; i-- {
-		assertStreamData(t, i, 1, 0)
+		assertStreamData(t, i, 0, 0)
 	}
 }

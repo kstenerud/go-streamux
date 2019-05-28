@@ -179,6 +179,7 @@ func assertNegotiation(t *testing.T,
 
 func TestInitValid(t *testing.T) {
 	assertNegotiationInitSuccess(t, 1, 1, 1, 0, 0, 0, false, false)
+	assertNegotiationInitSuccess(t, 15, 30, 30, 15, 29, 29, false, false)
 }
 
 func TestInitWildcard(t *testing.T) {
