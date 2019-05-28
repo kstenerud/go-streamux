@@ -45,10 +45,13 @@ func (this *SendableMessage) fillHeader(terminationBit uint32) {
 	}
 }
 
-func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) {
+func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) error {
 	this.fillHeader(terminationBit)
-	this.protocol.sendMessageChunk(this.priority, this.data)
+	if err := this.protocol.sendMessageChunk(this.priority, this.data); err != nil {
+		return err
+	}
 	this.data = this.data[0:this.headerLength]
+	return nil
 }
 
 func newSendableMessage(protocol *Protocol, priority int, id int, headerLength int, lengthBits int, idBits int, isResponse bool) *SendableMessage {
@@ -66,9 +69,9 @@ func newSendableMessage(protocol *Protocol, priority int, id int, headerLength i
 	return this
 }
 
-func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) {
+func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) error {
 	if this.isClosed {
-		panic(fmt.Errorf("Message has been closed"))
+		return fmt.Errorf("Message has been closed")
 	}
 
 	for len(bytesToSend) > 0 {
@@ -82,15 +85,21 @@ func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) {
 		this.data = append(this.data, bytesToAppend...)
 		if this.dataLength() == this.maxChunkLength {
 			dontTerminateMessage := uint32(0)
-			this.sendCurrentChunk(dontTerminateMessage)
+			if err := this.sendCurrentChunk(dontTerminateMessage); err != nil {
+				return err
+			}
 		}
 	}
 
 	if isEndOfData {
 		terminateMessage := uint32(1)
-		this.sendCurrentChunk(terminateMessage)
+		if err := this.sendCurrentChunk(terminateMessage); err != nil {
+			return err
+		}
 		this.Close()
 	}
+
+	return nil
 }
 
 func (this *SendableMessage) Close() {

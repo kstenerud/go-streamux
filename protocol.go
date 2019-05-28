@@ -14,12 +14,12 @@ const PriorityMax = math.MaxInt32
 const PriorityOOB = PriorityMax
 
 type MessageReceiveCallbacks interface {
-	OnRequestChunkReceived(messageId int, isEnd bool, data []byte)
-	OnResponseChunkReceived(messageId int, isEnd bool, data []byte)
+	OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error
+	OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error
 }
 
 type MessageSendCallbacks interface {
-	OnMessageChunkToSend(priority int, data []byte)
+	OnMessageChunkToSend(priority int, data []byte) error
 }
 
 type Protocol struct {
@@ -28,10 +28,6 @@ type Protocol struct {
 	decoder    messageDecoder_
 	idPool     IdPool
 	callbacks  MessageSendCallbacks
-}
-
-func (this *Protocol) sendMessageChunk(priority int, message []byte) {
-	this.callbacks.OnMessageChunkToSend(priority, message)
 }
 
 func (this *Protocol) allocateId() int {
@@ -68,52 +64,72 @@ func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommend
 	this.decoder.callbacks = receiveCallbacks
 }
 
-func (this *Protocol) Start() {
+func (this *Protocol) sendMessageChunk(priority int, chunk []byte) error {
+	return this.callbacks.OnMessageChunkToSend(priority, chunk)
+}
+
+func (this *Protocol) Start() error {
 	if !this.hasStarted {
 		this.hasStarted = true
-		this.sendMessageChunk(PriorityOOB, this.negotiator.BuildInitializeMessage())
+		return this.sendMessageChunk(PriorityOOB, this.negotiator.BuildInitializeMessage())
 	}
+	return nil
 }
 
-func (this *Protocol) SendMessage(priority int, contents []byte) {
+func (this *Protocol) SendMessage(priority int, contents []byte) error {
 	isEndOfData := true
-	message := this.BeginMessage(priority)
+	message, err := this.BeginMessage(priority)
+	if err != nil {
+		return err
+	}
 	defer message.Close()
-	message.AddData(contents, isEndOfData)
+	return message.AddData(contents, isEndOfData)
 }
 
-func (this *Protocol) SendResponseMessage(priority int, responseToId int, contents []byte) {
+func (this *Protocol) SendResponseMessage(priority int, responseToId int, contents []byte) error {
 	isEndOfData := true
-	message := this.BeginResponseMessage(priority, responseToId)
+	message, err := this.BeginResponseMessage(priority, responseToId)
+	if err != nil {
+		return err
+	}
 	defer message.Close()
-	message.AddData(contents, isEndOfData)
+	return message.AddData(contents, isEndOfData)
 }
 
-func (this *Protocol) BeginMessage(priority int) *SendableMessage {
-	this.Start()
+func (this *Protocol) BeginMessage(priority int) (*SendableMessage, error) {
+	if err := this.Start(); err != nil {
+		return nil, err
+	}
+
 	isResponse := false
 	return newSendableMessage(this, priority, this.allocateId(),
 		this.negotiator.HeaderLength, this.negotiator.LengthBits,
-		this.negotiator.IdBits, isResponse)
+		this.negotiator.IdBits, isResponse), nil
 }
 
-func (this *Protocol) BeginResponseMessage(priority int, responseToId int) *SendableMessage {
-	this.Start()
+func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*SendableMessage, error) {
+	if err := this.Start(); err != nil {
+		return nil, err
+	}
+
 	isResponse := true
 	return newSendableMessage(this, priority, this.allocateId(),
 		this.negotiator.HeaderLength, this.negotiator.LengthBits,
-		this.negotiator.IdBits, isResponse)
+		this.negotiator.IdBits, isResponse), nil
 }
 
 func (this *Protocol) Feed(incomingStreamData []byte) error {
-	this.Start()
+	if err := this.Start(); err != nil {
+		return err
+	}
+
 	if !this.negotiator.IsNegotiated {
 		var err error
 		if incomingStreamData, err = this.negotiator.Feed(incomingStreamData); err != nil {
 			return err
 		}
 		if this.negotiator.IsNegotiated {
-			this.decoder.Initialize(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits)
+			this.decoder.Init(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits)
 		}
 	}
 
