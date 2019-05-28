@@ -345,6 +345,30 @@ func TestFullIdRecLtMin(t *testing.T) {
 	assertNegotiationFail(t, 1, 30, 15, 0, 29, 15, false, false, 1, 1, 1, 1, 1, 2, 0, false, false)
 }
 
+// Quick Init
+
+func TestNegotiationQuickInitSuccess(t *testing.T) {
+	assertNegotiation(t, 6, 20, 15, 6, 16, 15, true, false, 1, 8, 15, 14, 6, 18, 10, false, true, 15, 15)
+}
+
+func TestNegotiationQuickInitBadParams(t *testing.T) {
+	assertNegotiationInitFail(t, 6, 20, 15, 6, 16, 15, true, true)
+	assertNegotiationFail(t, 6, 20, 15, 6, 16, 15, true, false, 1, 8, 15, 14, 6, 18, 10, true, true)
+}
+
+func TestNegotiationQuickInitNotAccepting(t *testing.T) {
+	assertNegotiationFail(t, 6, 20, 15, 6, 16, 15, true, false, 1, 8, 15, 14, 6, 18, 10, false, false)
+	assertNegotiationFail(t, 6, 20, 15, 6, 16, 15, false, false, 1, 8, 15, 14, 6, 18, 10, true, false)
+}
+
+func TestNegotiationQuickInitParamsOutOfRange(t *testing.T) {
+	assertNegotiation(t, 6, 20, 10, 6, 19, 15, true, false, 1, 8, 15, 14, 7, 18, 10, false, true, 10, 15)
+	assertNegotiationFail(t, 6, 20, 6, 6, 19, 15, true, false, 1, 8, 15, 14, 7, 18, 10, false, true)
+	assertNegotiationFail(t, 6, 20, 17, 6, 19, 15, true, false, 1, 8, 15, 14, 7, 18, 10, false, true)
+	assertNegotiationFail(t, 6, 20, 15, 6, 19, 6, true, false, 1, 8, 15, 14, 7, 18, 10, false, true)
+	assertNegotiationFail(t, 6, 20, 10, 6, 19, 19, true, false, 1, 8, 15, 14, 7, 18, 10, false, true)
+}
+
 // Spec Examples
 
 func TestNegotiationSpecCompatible(t *testing.T) {
@@ -363,7 +387,14 @@ func TestNegotiationSpecAllWildcard(t *testing.T) {
 	assertNegotiation(t, 6, 20, 31, 6, 16, 31, false, false, 1, 8, 15, 31, 6, 18, 31, false, false, 12, 11)
 }
 
-// TODO: Quick init success
-// TODO: Quick init not accepting
-// TODO: Quick init values bigger than max, smaller than min
-// TODO: Quic init invalid fields
+func TestNegotiationSpecQuickInitSuccess(t *testing.T) {
+	assertNegotiation(t, 10, 18, 14, 8, 15, 8, true, false, 1, 8, 15, 10, 6, 18, 10, false, true, 14, 8)
+}
+
+func TestNegotiationSpecQuickInitOutOfRange(t *testing.T) {
+	assertNegotiationFail(t, 10, 18, 16, 8, 15, 8, true, false, 1, 8, 15, 10, 6, 18, 10, false, true)
+}
+
+func TestNegotiationSpecQuickInitAllowedButNotRequested(t *testing.T) {
+	assertNegotiation(t, 10, 18, 14, 8, 15, 8, false, false, 1, 8, 15, 10, 6, 18, 10, false, true, 10, 8)
+}

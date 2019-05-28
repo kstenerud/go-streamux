@@ -152,6 +152,18 @@ func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
 	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
 	requestQuickInit int, allowQuickInit int) error {
 
+	if requestQuickInit != 0 {
+		if allowQuickInit != 0 {
+			return fmt.Errorf("Cannot enable both quick init \"request\" and \"allow\" at the same time")
+		}
+		if lengthRecommendBits == recommendedWildcard {
+			return fmt.Errorf("Cannot set recommended length bits to wildard (%v) when requesting quick init", lengthRecommendBits)
+		}
+		if idRecommendBits == recommendedWildcard {
+			return fmt.Errorf("Cannot set recommended ID bits to wildard (%v) when requesting quick init", idRecommendBits)
+		}
+	}
+
 	if err := validateMinMaxLimits("min length", lengthMinBits, 1, 15); err != nil {
 		return err
 	}
@@ -261,22 +273,51 @@ func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
 		return err
 	}
 
-	idBits, err := negotiateBitCount("ID", this.idMinBits,
-		this.idMaxBits, this.IdBits,
-		themIdMinBits, themIdMaxBits, themIdBits)
-	if err != nil {
-		return err
-	}
+	if this.requestQuickInit != 0 {
+		if themAllowQuickInit == 0 {
+			return fmt.Errorf("We requested quick init but peer doesn't allow it")
+		}
 
-	lengthBits, err := negotiateBitCount("length", this.lengthMinBits,
-		this.lengthMaxBits, this.LengthBits, themLengthMinBits,
-		themLengthMaxBits, themLengthBits)
-	if err != nil {
-		return err
-	}
+		// Make sure our recommended values work with their limits
+		if err := validateInitializeFields(themLengthMinBits, themLengthMaxBits,
+			this.LengthBits, themIdMinBits, themIdMaxBits, this.IdBits,
+			themRequestQuickInit, themAllowQuickInit); err != nil {
 
-	this.LengthBits, this.IdBits = capBitCounts(lengthBits, idBits)
-	this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
+			return err
+		}
+	} else if themRequestQuickInit != 0 {
+		if this.allowQuickInit == 0 {
+			return fmt.Errorf("Peer requested quick init but we don't allow it")
+		}
+
+		// Make sure their recommended values work with our limits
+		if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits,
+			themLengthBits, this.idMinBits, this.idMaxBits, themIdBits,
+			this.requestQuickInit, this.allowQuickInit); err != nil {
+
+			return err
+		}
+		this.LengthBits = themLengthBits
+		this.IdBits = themIdBits
+	} else {
+		idBits, err := negotiateBitCount("ID", this.idMinBits,
+			this.idMaxBits, this.IdBits,
+			themIdMinBits, themIdMaxBits, themIdBits)
+		if err != nil {
+			return err
+		}
+
+		lengthBits, err := negotiateBitCount("length", this.lengthMinBits,
+			this.lengthMaxBits, this.LengthBits, themLengthMinBits,
+			themLengthMaxBits, themLengthBits)
+		if err != nil {
+			return err
+		}
+
+		this.LengthBits, this.IdBits = capBitCounts(lengthBits, idBits)
+		this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
+
+	}
 
 	return nil
 }

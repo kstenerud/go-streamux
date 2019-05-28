@@ -2,7 +2,6 @@ package streamux
 
 // TODO:
 // - OOB messages
-// - Quick init
 // - ???
 
 import (
