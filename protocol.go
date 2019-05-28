@@ -5,6 +5,7 @@ package streamux
 // - ???
 
 import (
+	"fmt"
 	"math"
 )
 
@@ -128,9 +129,13 @@ func (this *Protocol) Feed(incomingStreamData []byte) error {
 		if incomingStreamData, err = this.negotiator.Feed(incomingStreamData); err != nil {
 			return err
 		}
-		if this.negotiator.IsNegotiated {
-			this.decoder.Init(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits)
+		if !this.negotiator.IsNegotiated {
+			if len(incomingStreamData) != 0 {
+				return fmt.Errorf("INTERNAL BUG: %v bytes in incoming stream, but negotiation still not complete", len(incomingStreamData))
+			}
+			return nil
 		}
+		this.decoder.Init(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits)
 	}
 
 	return this.decoder.Feed(incomingStreamData)

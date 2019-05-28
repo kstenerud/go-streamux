@@ -59,6 +59,7 @@ func (this *messageDecoder_) Init(headerLength int, lengthBits int, idBits int) 
 	this.shiftLength = shiftId + uint(idBits)
 	this.maskLength = (1 << uint32(lengthBits)) - 1
 	this.headerBuffer = make([]byte, 0, headerLength)
+	this.reset()
 }
 
 func (this *messageDecoder_) notifyMessageData(chunk []byte) error {
