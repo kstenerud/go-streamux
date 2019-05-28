@@ -53,12 +53,19 @@ func (this *messageDecoder_) decodeHeader(incomingStreamData []byte) []byte {
 	return incomingStreamData
 }
 
-func (this *messageDecoder_) Init(headerLength int, lengthBits int, idBits int) {
+func newMessageDecoder(headerLength int, lengthBits int, idBits int, callbacks MessageReceiveCallbacks) *messageDecoder_ {
+	this := new(messageDecoder_)
+	this.Init(headerLength, lengthBits, idBits, callbacks)
+	return this
+}
+
+func (this *messageDecoder_) Init(headerLength int, lengthBits int, idBits int, callbacks MessageReceiveCallbacks) {
 	this.headerLength = headerLength
 	this.maskId = (1 << uint32(idBits)) - 1
 	this.shiftLength = shiftId + uint(idBits)
 	this.maskLength = (1 << uint32(lengthBits)) - 1
 	this.headerBuffer = make([]byte, 0, headerLength)
+	this.callbacks = callbacks
 	this.reset()
 }
 
