@@ -8,9 +8,10 @@ import (
 	"math"
 )
 
-const protocolVersion = 1
+const ProtocolVersion = 1
 
-const priorityOOB = math.MaxInt32
+const PriorityMax = math.MaxInt32
+const PriorityOOB = PriorityMax
 
 type MessageReceiveCallbacks interface {
 	OnRequestChunkReceived(messageId int, isEnd bool, data []byte)
@@ -70,7 +71,7 @@ func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommend
 func (this *Protocol) Start() {
 	if !this.hasStarted {
 		this.hasStarted = true
-		this.sendMessageChunk(priorityOOB, this.negotiator.BuildInitializeMessage())
+		this.sendMessageChunk(PriorityOOB, this.negotiator.BuildInitializeMessage())
 	}
 }
 

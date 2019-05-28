@@ -248,8 +248,8 @@ func (this *negotiator_) Init(lengthMinBits int, lengthMaxBits int,
 
 func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
 	version := int(data[0])
-	if version != protocolVersion {
-		return fmt.Errorf("Negotiation failed: Expected protocol version %v, but got %v", protocolVersion, version)
+	if version != ProtocolVersion {
+		return fmt.Errorf("Negotiation failed: Expected protocol version %v, but got %v", ProtocolVersion, version)
 	}
 	message :=
 		uint(data[1])<<24 |
@@ -333,7 +333,7 @@ func (this *negotiator_) BuildInitializeMessage() []byte {
 		this.allowQuickInit<<shiftQuickInitAllowed
 
 	request := []byte{
-		protocolVersion,
+		ProtocolVersion,
 		byte(requestPieces >> 24),
 		byte((requestPieces >> 16) & 0xff),
 		byte((requestPieces >> 8) & 0xff),
