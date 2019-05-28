@@ -142,7 +142,7 @@ func (this *Protocol) BeginMessage(priority int) (*SendableMessage, error) {
 	}
 
 	isResponse := false
-	return newSendableMessage(this, priority, this.allocateId(),
+	return newSendableMessage(this.idPool, this.callbacks, priority, this.allocateId(),
 		this.negotiator.HeaderLength, this.negotiator.LengthBits,
 		this.negotiator.IdBits, isResponse), nil
 }
@@ -157,7 +157,7 @@ func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*Sen
 	}
 
 	isResponse := true
-	return newSendableMessage(this, priority, this.allocateId(),
+	return newSendableMessage(this.idPool, this.callbacks, priority, this.allocateId(),
 		this.negotiator.HeaderLength, this.negotiator.LengthBits,
 		this.negotiator.IdBits, isResponse), nil
 }

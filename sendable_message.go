@@ -18,8 +18,9 @@ type SendableMessage struct {
 
 	data []byte
 
-	isClosed bool
-	protocol *Protocol
+	isClosed  bool
+	idPool    *IdPool
+	callbacks MessageSendCallbacks
 }
 
 func boolToUint32(value bool) uint32 {
@@ -47,16 +48,20 @@ func (this *SendableMessage) fillHeader(terminationBit uint32) {
 
 func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) error {
 	this.fillHeader(terminationBit)
-	if err := this.protocol.sendMessageChunk(this.priority, this.data); err != nil {
+	if err := this.callbacks.OnMessageChunkToSend(this.priority, this.data); err != nil {
 		return err
 	}
 	this.data = this.data[0:this.headerLength]
 	return nil
 }
 
-func newSendableMessage(protocol *Protocol, priority int, id int, headerLength int, lengthBits int, idBits int, isResponse bool) *SendableMessage {
+func newSendableMessage(idPool *IdPool, callbacks MessageSendCallbacks,
+	priority int, id int, headerLength int, lengthBits int, idBits int,
+	isResponse bool) *SendableMessage {
+
 	this := new(SendableMessage)
-	this.protocol = protocol
+	this.idPool = idPool
+	this.callbacks = callbacks
 	this.priority = priority
 	this.Id = id
 	this.idShifted = uint32(id) << shiftId
@@ -106,6 +111,6 @@ func (this *SendableMessage) Close() {
 	if this.isClosed {
 		return
 	}
-	this.protocol.deallocateId(this.Id)
+	this.idPool.DeallocateId(this.Id)
 	this.isClosed = true
 }
