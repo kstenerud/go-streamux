@@ -49,6 +49,7 @@ type testPeer struct {
 	ResponsesReceived map[int][]byte
 	ResponsesEnded    map[int]bool
 	RequestOrder      []int
+	AbleToSend        bool
 }
 
 func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
@@ -80,6 +81,10 @@ func (this *testPeer) OnResponseChunkReceived(messageId int, isEnd bool, data []
 	this.ResponsesEnded[messageId] = isEnd
 
 	return nil
+}
+
+func (this *testPeer) OnAbleToSend() {
+	this.AbleToSend = true
 }
 
 func (this *testPeer) OnMessageChunkToSend(priority int, data []byte) error {
@@ -132,14 +137,20 @@ func newTestPeer(lengthBits, idBits int) *testPeer {
 	return this
 }
 
-func newTestPeerPair(t *testing.T, lengthBits, idBits int) (a, b *testPeer) {
+func (this *testPeer) linkTo(them *testPeer) error {
+	this.peer = them
+	them.peer = this
+	if err := this.protocol.Start(); err != nil {
+		return err
+	}
+	return them.protocol.Start()
+}
+
+func newTestPeerPair(t *testing.T, lengthBits, idBits int) (a, b *testPeer, err error) {
 	a = newTestPeer(lengthBits, idBits)
 	b = newTestPeer(lengthBits, idBits)
 
-	a.peer = b
-	b.peer = a
-
-	return a, b
+	return a, b, a.linkTo(b)
 }
 
 func newTestData(length int) []byte {

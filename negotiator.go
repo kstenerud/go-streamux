@@ -4,8 +4,16 @@ import (
 	"fmt"
 )
 
+type negotiatorState_ int
+
+const (
+	negotiatorStateNotNegotiated = iota
+	negotiatorStateFailed
+	negotiatorStateQuickNegotiated
+	negotiatorStateFullyNegotiated
+)
+
 type negotiator_ struct {
-	IsNegotiated bool
 	HeaderLength int
 	LengthBits   int
 	IdBits       int
@@ -17,6 +25,7 @@ type negotiator_ struct {
 	idMinBits        int
 	idMaxBits        int
 	messageBuffer    []byte
+	state            negotiatorState_
 }
 
 const (
@@ -207,6 +216,16 @@ func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
 	return nil
 }
 
+func (this *negotiator_) markNegotiationFailure() {
+	this.state = negotiatorStateFailed
+}
+
+func (this *negotiator_) markNegotiationSuccess() {
+	if this.state != negotiatorStateFailed {
+		this.state = negotiatorStateFullyNegotiated
+	}
+}
+
 func newNegotiator(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	idMinBits int, idMaxBits int, idRecommendBits int,
 	requestQuickInit bool, allowQuickInit bool) *negotiator_ {
@@ -240,22 +259,29 @@ func (this *negotiator_) Init(lengthMinBits int, lengthMaxBits int,
 
 	if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
 		this.idMinBits, this.idMaxBits, this.IdBits, this.requestQuickInit, this.allowQuickInit); err != nil {
+		this.markNegotiationFailure()
 		panic(err)
 	}
 
 	this.messageBuffer = make([]byte, 0, initializeMessageLength)
+
+	if requestQuickInit {
+		this.state = negotiatorStateQuickNegotiated
+	} else {
+		this.state = negotiatorStateNotNegotiated
+	}
 }
 
-func (this *negotiator_) negotiateInitializeMessage(data []byte) error {
-	version := int(data[0])
+func (this *negotiator_) negotiateInitializeMessage() error {
+	version := int(this.messageBuffer[0])
 	if version != ProtocolVersion {
 		return fmt.Errorf("Negotiation failed: Expected protocol version %v, but got %v", ProtocolVersion, version)
 	}
 	message :=
-		uint(data[1])<<24 |
-			uint(data[2])<<16 |
-			uint(data[3])<<8 |
-			uint(data[4])
+		uint(this.messageBuffer[1])<<24 |
+			uint(this.messageBuffer[2])<<16 |
+			uint(this.messageBuffer[3])<<8 |
+			uint(this.messageBuffer[4])
 
 	themIdBits := int(message & maskRecommended)
 	themIdMaxBits := int((message >> shiftIdBitsMax) & maskMax)
@@ -341,19 +367,41 @@ func (this *negotiator_) BuildInitializeMessage() []byte {
 	return request
 }
 
-func (this *negotiator_) Feed(incomingStreamData []byte) (updatedStreamData []byte, err error) {
-	updatedStreamData = incomingStreamData
-	if !this.IsNegotiated {
+func (this *negotiator_) Feed(incomingStreamData []byte) ([]byte, error) {
+	if !this.IsNegotiationComplete() {
 		if len(this.messageBuffer) < initializeMessageLength {
-			this.messageBuffer, updatedStreamData = fillBuffer(initializeMessageLength, this.messageBuffer, updatedStreamData)
+			this.messageBuffer, incomingStreamData = fillBuffer(initializeMessageLength, this.messageBuffer, incomingStreamData)
 			if len(this.messageBuffer) < initializeMessageLength {
-				return updatedStreamData, nil
+				return incomingStreamData, nil
 			}
 		}
-		if err := this.negotiateInitializeMessage(this.messageBuffer); err != nil {
-			return updatedStreamData, err
+		if err := this.negotiateInitializeMessage(); err != nil {
+			this.markNegotiationFailure()
+			return incomingStreamData, err
 		}
-		this.IsNegotiated = true
+		this.markNegotiationSuccess()
 	}
-	return updatedStreamData, nil
+	return incomingStreamData, nil
+}
+
+func (this *negotiator_) CanSendMessages() bool {
+	return this.state == negotiatorStateQuickNegotiated || this.state == negotiatorStateFullyNegotiated
+}
+
+func (this *negotiator_) CanReceiveMessages() bool {
+	return this.state == negotiatorStateFullyNegotiated
+}
+
+func (this *negotiator_) IsNegotiationComplete() bool {
+	return this.state == negotiatorStateFullyNegotiated || this.state == negotiatorStateFailed
+}
+
+func (this *negotiator_) ExplainFailure() string {
+	if this.state == negotiatorStateFailed {
+		return "Negotiation failed"
+	}
+	if this.state == negotiatorStateNotNegotiated {
+		return "Negotiation not complete"
+	}
+	return "Unknown (this is a bug)"
 }

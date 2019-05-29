@@ -5,7 +5,12 @@ import (
 )
 
 func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
-	a, b := newTestPeerPair(t, lengthBits, idBits)
+	a, b, err := newTestPeerPair(t, lengthBits, idBits)
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
 	expected := newTestData(dataSize)
 	a.SendMessage(expected)
 	actual := b.GetFirstRequest()
