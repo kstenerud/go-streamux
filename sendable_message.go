@@ -34,6 +34,14 @@ func (this *SendableMessage) dataLength() int {
 	return len(this.data) - this.headerLength
 }
 
+func (this *SendableMessage) freeChunkSpace() int {
+	return this.maxChunkLength - this.dataLength()
+}
+
+func (this *SendableMessage) clearData() {
+	this.data = this.data[0:this.headerLength]
+}
+
 func (this *SendableMessage) fillHeader(terminationBit uint32) {
 	headerFields := terminationBit |
 		this.responseBitShifted |
@@ -44,6 +52,7 @@ func (this *SendableMessage) fillHeader(terminationBit uint32) {
 		this.data[i] = byte(headerFields)
 		headerFields >>= 8
 	}
+	// fmt.Printf("### Fill header, length %v with shift %v\n", this.dataLength(), this.shiftLength)
 }
 
 func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) error {
@@ -51,7 +60,7 @@ func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) error {
 	if err := this.callbacks.OnMessageChunkToSend(this.priority, this.data); err != nil {
 		return err
 	}
-	this.data = this.data[0:this.headerLength]
+	this.clearData()
 	return nil
 }
 
@@ -69,7 +78,12 @@ func newSendableMessage(idPool *idPool, callbacks MessageSendCallbacks,
 	this.shiftLength = uint(shiftId + idBits)
 	this.headerLength = headerLength
 	this.maxChunkLength = 1<<uint(lengthBits) - 1
-	this.data = make([]byte, this.headerLength, this.maxChunkLength)
+
+	initialBufferCapacity := this.maxChunkLength
+	if initialBufferCapacity > 1028 {
+		initialBufferCapacity = 1028
+	}
+	this.data = make([]byte, this.headerLength, initialBufferCapacity)
 
 	return this
 }
@@ -79,28 +93,33 @@ func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) error
 		return fmt.Errorf("Message has been closed")
 	}
 
-	for len(bytesToSend) > 0 {
-		filledByteCount := this.dataLength()
-		toSendByteCount := len(bytesToSend)
-		if filledByteCount+toSendByteCount > this.maxChunkLength {
-			toSendByteCount = this.maxChunkLength - filledByteCount
-		}
-		bytesToAppend := bytesToSend[:toSendByteCount]
-		bytesToSend = bytesToSend[toSendByteCount:]
+	for len(bytesToSend) > this.freeChunkSpace() {
+		// fmt.Printf("### calc: max chunk length %v, data %v, header length %v\n", this.maxChunkLength, len(this.data), this.headerLength)
+		appendByteCount := this.freeChunkSpace()
+		bytesToAppend := bytesToSend[:appendByteCount]
+		// fmt.Printf("### add data: free space %v, bytes to append %v, bytes to send %v, data %v\n",
+		// 	this.freeChunkSpace(), len(bytesToAppend), len(bytesToSend), len(this.data))
+
+		bytesToSend = bytesToSend[appendByteCount:]
 		this.data = append(this.data, bytesToAppend...)
-		if this.dataLength() == this.maxChunkLength {
-			dontTerminateMessage := uint32(0)
-			if err := this.sendCurrentChunk(dontTerminateMessage); err != nil {
-				return err
-			}
+		// fmt.Printf("### bytes to send now %v, data now %v\n", len(bytesToSend), len(this.data))
+		doNotTerminateMessage := uint32(0)
+		if err := this.sendCurrentChunk(doNotTerminateMessage); err != nil {
+			// fmt.Printf("### ERROR %v\n", err)
+			return err
 		}
 	}
 
+	this.data = append(this.data, bytesToSend...)
+	termination := uint32(0)
 	if isEndOfData {
-		terminateMessage := uint32(1)
-		if err := this.sendCurrentChunk(terminateMessage); err != nil {
-			return err
-		}
+		termination = uint32(1)
+	}
+	if err := this.sendCurrentChunk(termination); err != nil {
+		return err
+	}
+
+	if isEndOfData {
 		this.Close()
 	}
 

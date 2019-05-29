@@ -266,6 +266,7 @@ func (this *negotiator_) Init(lengthMinBits int, lengthMaxBits int,
 	this.messageBuffer = make([]byte, 0, initializeMessageLength)
 
 	if requestQuickInit {
+		this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
 		this.state = negotiatorStateQuickNegotiated
 	} else {
 		this.state = negotiatorStateNotNegotiated
@@ -311,6 +312,9 @@ func (this *negotiator_) negotiateInitializeMessage() error {
 
 			return err
 		}
+
+		// Note: Header length, length bits, and id bits are already calculated.
+
 	} else if themRequestQuickInit != 0 {
 		if this.allowQuickInit == 0 {
 			return fmt.Errorf("Peer requested quick init but we don't allow it")
@@ -325,6 +329,7 @@ func (this *negotiator_) negotiateInitializeMessage() error {
 		}
 		this.LengthBits = themLengthBits
 		this.IdBits = themIdBits
+		this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
 	} else {
 		idBits, err := negotiateBitCount("ID", this.idMinBits,
 			this.idMaxBits, this.IdBits,

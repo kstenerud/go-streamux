@@ -18,16 +18,14 @@ type messageDecoder_ struct {
 	id             int
 	length         int
 
-	bytesRemaining int
-	callbacks      MessageReceiveCallbacks
+	isHeaderDecoded bool
+	bytesRemaining  int
+	callbacks       MessageReceiveCallbacks
 }
 
 func (this *messageDecoder_) reset() {
 	this.headerBuffer = this.headerBuffer[:0]
-}
-
-func (this *messageDecoder_) isHeaderDecoded() bool {
-	return len(this.headerBuffer) == this.headerLength
+	this.isHeaderDecoded = false
 }
 
 func (this *messageDecoder_) isMessageChunkComplete() bool {
@@ -35,9 +33,11 @@ func (this *messageDecoder_) isMessageChunkComplete() bool {
 }
 
 func (this *messageDecoder_) decodeHeader(incomingStreamData []byte) []byte {
+	// fmt.Printf("### D %p: Decode header: headerLength %v, headerBuffer %v, incoming %v\n", this, this.headerLength, len(this.headerBuffer), len(incomingStreamData))
+
 	this.headerBuffer, incomingStreamData = fillBuffer(this.headerLength, this.headerBuffer, incomingStreamData)
 
-	if this.isHeaderDecoded() {
+	if len(this.headerBuffer) == this.headerLength {
 		var header uint32
 		for i := this.headerLength - 1; i >= 0; i-- {
 			header <<= 8
@@ -48,6 +48,9 @@ func (this *messageDecoder_) decodeHeader(incomingStreamData []byte) []byte {
 		this.id = int((header >> shiftId) & this.maskId)
 		this.length = int((header >> this.shiftLength) & this.maskLength)
 		this.bytesRemaining = this.length
+		this.isHeaderDecoded = true
+		// fmt.Printf("### Decode header: Length %v, shift %v\n", this.length, this.shiftLength)
+		// fmt.Printf("### D %p: terminated: %v\n", this, this.isEndOfMessage)
 	}
 
 	return incomingStreamData
@@ -60,6 +63,9 @@ func newMessageDecoder(headerLength int, lengthBits int, idBits int, callbacks M
 }
 
 func (this *messageDecoder_) Init(headerLength int, lengthBits int, idBits int, callbacks MessageReceiveCallbacks) {
+	if headerLength == 0 {
+		panic(fmt.Errorf("Internal bug: Should not have header length 0"))
+	}
 	this.headerLength = headerLength
 	this.maskId = (1 << uint32(idBits)) - 1
 	this.shiftLength = shiftId + uint(idBits)
@@ -86,9 +92,10 @@ func (this *messageDecoder_) notifyMessageData(chunk []byte) error {
 }
 
 func (this *messageDecoder_) Feed(incomingStreamData []byte) error {
-	if !this.isHeaderDecoded() {
+	// fmt.Printf("### D %p: feed id %v. Data length %v. Is header decoded: %v\n", this, this.id, len(incomingStreamData), this.isHeaderDecoded)
+	if !this.isHeaderDecoded {
 		incomingStreamData = this.decodeHeader(incomingStreamData)
-		if !this.isHeaderDecoded() {
+		if !this.isHeaderDecoded {
 			if len(incomingStreamData) != 0 {
 				return fmt.Errorf("INTERNAL BUG: %v bytes in incoming stream, but header still not decoded", len(incomingStreamData))
 			}
@@ -99,13 +106,16 @@ func (this *messageDecoder_) Feed(incomingStreamData []byte) error {
 	var decodedData []byte
 
 	if this.isMessageChunkComplete() {
+		// fmt.Printf("#### D %p: Message chunk complete. Length %v\n", this, len(decodedData))
 		return this.notifyMessageData(decodedData)
 	}
 
 	for len(incomingStreamData) > 0 && !this.isMessageChunkComplete() {
 		decodedData, incomingStreamData = useBytes(this.bytesRemaining, incomingStreamData)
 		this.bytesRemaining -= len(decodedData)
+		// fmt.Printf("#### D %p: Message data. Length %v\n", this, len(decodedData))
 		if err := this.notifyMessageData(decodedData); err != nil {
+			fmt.Printf("ERROR %v\n", err)
 			return err
 		}
 	}

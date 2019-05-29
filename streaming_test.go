@@ -12,7 +12,16 @@ func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
 	}
 
 	expected := newTestData(dataSize)
-	a.SendMessage(expected)
+	if err := a.SendMessage(expected); err != nil {
+		t.Error(err)
+		return
+	}
+
+	a.Close()
+	b.Close()
+
+	a.Wait()
+
 	actual := b.GetFirstRequest()
 	if err := assertSlicesAreEquivalent(actual, expected); err != nil {
 		t.Error(err)
@@ -21,13 +30,25 @@ func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
 
 // =============================================================================
 
-func TestStream(t *testing.T) {
+func TestStream1(t *testing.T) {
 	for i := 20; i >= 2; i-- {
 		assertStreamData(t, i, 10, 100000)
 	}
-	for i := 20; i >= 2; i-- {
-		assertStreamData(t, i, 2, 99999)
+}
+
+func TestStream2(t *testing.T) {
+	for i := 15; i >= 2; i-- {
+		assertStreamData(t, i, 2, 4096)
 	}
+	for i := 15; i >= 2; i-- {
+		assertStreamData(t, i, 2, 4095)
+	}
+	for i := 15; i >= 2; i-- {
+		assertStreamData(t, i, 2, 4094)
+	}
+}
+
+func TestStream3(t *testing.T) {
 	for i := 10; i >= 1; i-- {
 		assertStreamData(t, i, 0, 10)
 	}

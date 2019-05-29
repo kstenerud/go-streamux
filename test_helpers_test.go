@@ -2,6 +2,7 @@ package streamux
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 )
 
@@ -42,17 +43,44 @@ func assertSlicesAreEquivalent(actual, expected []byte) error {
 }
 
 type testPeer struct {
+	t                 *testing.T
 	protocol          *Protocol
-	peer              *testPeer
+	sendChannel       chan []byte
+	recvChannel       chan []byte
+	wg                *sync.WaitGroup
 	RequestsReceived  map[int][]byte
 	RequestsEnded     map[int]bool
 	ResponsesReceived map[int][]byte
 	ResponsesEnded    map[int]bool
 	RequestOrder      []int
 	AbleToSend        bool
+	NegotiationFailed bool
+}
+
+func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChannel chan []byte, recvChannel chan []byte, wg *sync.WaitGroup) *testPeer {
+	this := new(testPeer)
+	this.t = t
+	this.RequestsReceived = make(map[int][]byte)
+	this.RequestsEnded = make(map[int]bool)
+	this.ResponsesReceived = make(map[int][]byte)
+	this.ResponsesEnded = make(map[int]bool)
+	this.RequestOrder = make([]int, 100)
+	this.sendChannel = sendChannel
+	this.recvChannel = recvChannel
+	this.wg = wg
+
+	requestQuickInit := true
+	allowQuickInit := false
+	if isServer {
+		requestQuickInit = false
+		allowQuickInit = true
+	}
+	this.protocol = NewProtocol(1, 30, lengthBits, 0, 29, idBits, requestQuickInit, allowQuickInit, this, this)
+	return this
 }
 
 func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
+	// fmt.Printf("### TP %p: Received request id %v, %v bytes, end %v\n", this, messageId, len(data), isEnd)
 	message, messageFound := this.RequestsReceived[messageId]
 	endOfMessage, _ := this.RequestsEnded[messageId]
 
@@ -83,12 +111,22 @@ func (this *testPeer) OnResponseChunkReceived(messageId int, isEnd bool, data []
 	return nil
 }
 
+func (this *testPeer) OnNegotiationFailed() {
+	// fmt.Printf("### %TP p: Negotiation failed\n", this)
+	this.NegotiationFailed = true
+}
+
 func (this *testPeer) OnAbleToSend() {
+	// fmt.Printf("### Able to send\n")
 	this.AbleToSend = true
 }
 
 func (this *testPeer) OnMessageChunkToSend(priority int, data []byte) error {
-	return this.peer.protocol.Feed(data)
+	// fmt.Printf("### TP %p: Sending message chunk size %v\n", this, len(data))
+	toSend := make([]byte, len(data))
+	copy(toSend, data)
+	this.sendChannel <- toSend
+	return nil
 }
 
 func (this *testPeer) SendMessage(data []byte) error {
@@ -126,31 +164,51 @@ func (this *testPeer) GetResponse(id int) []byte {
 	panic(fmt.Errorf("Response ID %v not found", id))
 }
 
-func newTestPeer(lengthBits, idBits int) *testPeer {
-	this := new(testPeer)
-	this.RequestsReceived = make(map[int][]byte)
-	this.RequestsEnded = make(map[int]bool)
-	this.ResponsesReceived = make(map[int][]byte)
-	this.ResponsesEnded = make(map[int]bool)
-	this.RequestOrder = make([]int, 100)
-	this.protocol = NewProtocol(1, 30, lengthBits, 0, 29, idBits, false, false, this, this)
-	return this
+func (this *testPeer) BeginInitialization() error {
+	return this.protocol.BeginInitialization()
 }
 
-func (this *testPeer) linkTo(them *testPeer) error {
-	this.peer = them
-	them.peer = this
-	if err := this.protocol.Start(); err != nil {
-		return err
+func (this *testPeer) BeginFeeding() {
+	this.wg.Add(1)
+	go func() {
+		defer this.wg.Done()
+		for data := range this.recvChannel {
+			// fmt.Printf("### Reading chunk of %v bytes\n", len(data))
+			if err := this.protocol.Feed(data); err != nil {
+				this.t.Error(err)
+				return
+			}
+		}
+	}()
+}
+
+func (this *testPeer) Wait() {
+	this.wg.Wait()
+}
+
+func (this *testPeer) Close() {
+	close(this.sendChannel)
+}
+
+func newTestPeerPair(t *testing.T, lengthBits, idBits int) (client, server *testPeer, err error) {
+	wg := new(sync.WaitGroup)
+	clientSendsChannel := make(chan []byte)
+	serverSendsChannel := make(chan []byte)
+	client = newTestPeer(t, lengthBits, idBits, false, clientSendsChannel, serverSendsChannel, wg)
+	server = newTestPeer(t, lengthBits, idBits, true, serverSendsChannel, clientSendsChannel, wg)
+
+	client.BeginFeeding()
+	server.BeginFeeding()
+
+	if err := client.BeginInitialization(); err != nil {
+		return nil, nil, err
 	}
-	return them.protocol.Start()
-}
 
-func newTestPeerPair(t *testing.T, lengthBits, idBits int) (a, b *testPeer, err error) {
-	a = newTestPeer(lengthBits, idBits)
-	b = newTestPeer(lengthBits, idBits)
+	if err := server.BeginInitialization(); err != nil {
+		return nil, nil, err
+	}
 
-	return a, b, a.linkTo(b)
+	return client, server, nil
 }
 
 func newTestData(length int) []byte {

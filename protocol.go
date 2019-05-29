@@ -20,17 +20,19 @@ type MessageReceiveCallbacks interface {
 }
 
 type MessageSendCallbacks interface {
+	OnNegotiationFailed()
 	OnAbleToSend()
 	OnMessageChunkToSend(priority int, data []byte) error
 }
 
 type Protocol struct {
-	hasStarted       bool
-	negotiator       *negotiator_
-	decoder          *messageDecoder_
-	idPool           *idPool
-	callbacks        MessageSendCallbacks
-	decoderCallbacks MessageReceiveCallbacks
+	hasBegunInitialization         bool
+	hasFinishedEarlyInitialization bool
+	negotiator                     *negotiator_
+	decoder                        *messageDecoder_
+	idPool                         *idPool
+	callbacks                      MessageSendCallbacks
+	decoderCallbacks               MessageReceiveCallbacks
 }
 
 func (this *Protocol) allocateId() int {
@@ -68,26 +70,35 @@ func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommend
 }
 
 func (this *Protocol) feedNegotiator(incomingStreamData []byte) ([]byte, error) {
+	// fmt.Printf("### P %p: Feeding %v bytes to negotiator\n", this, len(incomingStreamData))
+	var err error
+	if incomingStreamData, err = this.negotiator.Feed(incomingStreamData); err != nil {
+		this.callbacks.OnNegotiationFailed()
+		return nil, err
+	}
 	if !this.negotiator.IsNegotiationComplete() {
-		var err error
-		if incomingStreamData, err = this.negotiator.Feed(incomingStreamData); err != nil {
-			return nil, err
+		if len(incomingStreamData) != 0 {
+			return nil, fmt.Errorf("INTERNAL BUG: %v bytes in incoming stream, but negotiation still not complete", len(incomingStreamData))
 		}
-		if !this.negotiator.IsNegotiationComplete() {
-			if len(incomingStreamData) != 0 {
-				return nil, fmt.Errorf("INTERNAL BUG: %v bytes in incoming stream, but negotiation still not complete", len(incomingStreamData))
-			}
-			return incomingStreamData, nil
-		}
+		return incomingStreamData, nil
+	}
 
+	this.finishEarlyInitialization()
+
+	return incomingStreamData, nil
+}
+
+func (this *Protocol) finishEarlyInitialization() {
+	if !this.hasFinishedEarlyInitialization {
+		this.hasFinishedEarlyInitialization = true
 		this.decoder = newMessageDecoder(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits, this.decoderCallbacks)
 		this.idPool = newIdPool(this.negotiator.IdBits)
 		this.callbacks.OnAbleToSend()
 	}
-	return incomingStreamData, nil
 }
 
 func (this *Protocol) feedDecoder(incomingStreamData []byte) error {
+	// fmt.Printf("### P %p: Feeding %v bytes to decoder\n", this, len(incomingStreamData))
 	return this.decoder.Feed(incomingStreamData)
 }
 
@@ -95,34 +106,35 @@ func (this *Protocol) sendMessageChunk(priority int, chunk []byte) error {
 	return this.callbacks.OnMessageChunkToSend(priority, chunk)
 }
 
-func (this *Protocol) Start() error {
-	if !this.hasStarted {
-		this.hasStarted = true
+func (this *Protocol) BeginInitialization() error {
+	if !this.hasBegunInitialization {
+		this.hasBegunInitialization = true
+		if this.negotiator.CanSendMessages() {
+			this.finishEarlyInitialization()
+		}
+		// fmt.Printf("### P %p: Sending init message\n", this)
 		return this.sendMessageChunk(PriorityOOB, this.negotiator.BuildInitializeMessage())
-	}
-	if this.negotiator.CanSendMessages() {
-		this.callbacks.OnAbleToSend()
 	}
 	return nil
 }
 
 func (this *Protocol) SendMessage(priority int, contents []byte) error {
-	isEndOfData := true
 	message, err := this.BeginMessage(priority)
 	if err != nil {
 		return err
 	}
 	defer message.Close()
+	isEndOfData := true
 	return message.AddData(contents, isEndOfData)
 }
 
 func (this *Protocol) SendResponseMessage(priority int, responseToId int, contents []byte) error {
-	isEndOfData := true
 	message, err := this.BeginResponseMessage(priority, responseToId)
 	if err != nil {
 		return err
 	}
 	defer message.Close()
+	isEndOfData := true
 	return message.AddData(contents, isEndOfData)
 }
 
@@ -149,13 +161,15 @@ func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*Sen
 }
 
 func (this *Protocol) Feed(incomingStreamData []byte) error {
-	if err := this.Start(); err != nil {
-		return err
-	}
-
-	var err error
-	if incomingStreamData, err = this.feedNegotiator(incomingStreamData); err != nil {
-		return err
+	// fmt.Printf("### P %p: Feed %v bytes. Negotiation complete: %v\n", this, len(incomingStreamData), this.negotiator.IsNegotiationComplete())
+	if !this.negotiator.IsNegotiationComplete() {
+		var err error
+		if incomingStreamData, err = this.feedNegotiator(incomingStreamData); err != nil {
+			return err
+		}
+		if len(incomingStreamData) == 0 {
+			return nil
+		}
 	}
 
 	if this.negotiator.CanReceiveMessages() {
