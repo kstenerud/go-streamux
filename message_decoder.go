@@ -49,8 +49,8 @@ func (this *messageDecoder_) decodeHeader(incomingStreamData []byte) []byte {
 		this.length = int((header >> this.shiftLength) & this.maskLength)
 		this.bytesRemaining = this.length
 		this.isHeaderDecoded = true
-		// fmt.Printf("### Decode header: Length %v, shift %v\n", this.length, this.shiftLength)
-		// fmt.Printf("### D %p: terminated: %v\n", this, this.isEndOfMessage)
+		// fmt.Printf("### D %p: lshift %v, lmask %v, ishift %v, imask %v\n", this, this.shiftLength, this.maskLength, shiftId, this.maskId)
+		// fmt.Printf("### D %p: Decode header len %v, id %v, resp %v, term %v\n", this, this.length, this.id, this.isResponse, this.isEndOfMessage)
 	}
 
 	return incomingStreamData

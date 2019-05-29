@@ -52,7 +52,8 @@ func (this *SendableMessage) fillHeader(terminationBit uint32) {
 		this.data[i] = byte(headerFields)
 		headerFields >>= 8
 	}
-	// fmt.Printf("### Fill header, length %v with shift %v\n", this.dataLength(), this.shiftLength)
+	// fmt.Printf("### SM %p: lshift %v, ishift %v\n", this, this.shiftLength, shiftId)
+	// fmt.Printf("### SM %p: Decode header len %v, id %v, resp %v, term %v\n", this, this.dataLength(), this.idShifted>>shiftId, this.responseBitShifted>>shiftResponseBit, terminationBit)
 }
 
 func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) error {

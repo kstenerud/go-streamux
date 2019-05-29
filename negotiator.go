@@ -222,6 +222,7 @@ func (this *negotiator_) markNegotiationFailure() {
 
 func (this *negotiator_) markNegotiationSuccess() {
 	if this.state != negotiatorStateFailed {
+		// fmt.Printf("### N %p: lbits %v, ibits %v\n", this, this.LengthBits, this.IdBits)
 		this.state = negotiatorStateFullyNegotiated
 	}
 }

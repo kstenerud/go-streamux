@@ -64,7 +64,7 @@ func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChanne
 	this.RequestsEnded = make(map[int]bool)
 	this.ResponsesReceived = make(map[int][]byte)
 	this.ResponsesEnded = make(map[int]bool)
-	this.RequestOrder = make([]int, 100)
+	this.RequestOrder = make([]int, 0, 100)
 	this.sendChannel = sendChannel
 	this.recvChannel = recvChannel
 	this.wg = wg
@@ -91,6 +91,7 @@ func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []b
 	this.RequestsReceived[messageId] = append(message, data...)
 	this.RequestsEnded[messageId] = isEnd
 	if !messageFound {
+		// fmt.Printf("### Adding id %v to request order\n", messageId)
 		this.RequestOrder = append(this.RequestOrder, messageId)
 	}
 
@@ -138,7 +139,9 @@ func (this *testPeer) GetFirstRequest() []byte {
 }
 
 func (this *testPeer) GetRequestAtIndex(index int) []byte {
+	// fmt.Printf("### Fetch request index %v. requestOrder contains %v items\n", index, len(this.RequestOrder))
 	if index < len(this.RequestOrder) {
+		// fmt.Printf("#### Request ID is %v\n", this.RequestOrder[index])
 		return this.GetRequest(this.RequestOrder[index])
 	}
 	panic(fmt.Errorf("Request at index %v not found", index))
