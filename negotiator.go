@@ -14,9 +14,8 @@ const (
 )
 
 type negotiator_ struct {
-	HeaderLength int
-	LengthBits   int
-	IdBits       int
+	LengthBits int
+	IdBits     int
 
 	requestQuickInit int
 	allowQuickInit   int
@@ -75,19 +74,6 @@ func midpointInt(a, b int) int {
 		result++
 	}
 	return result
-}
-
-func calculateHeaderLength(lengthBits, idBits int) int {
-	totalBits := lengthBits + idBits
-	switch {
-	case totalBits <= 6:
-		return 1
-	case totalBits <= 14:
-		return 2
-	case totalBits <= 22:
-		return 3
-	}
-	return 4
 }
 
 func negotiateBitCount(name string, usMin int, usMax int, usRecommended int, themMin int, themMax int, themRecommended int) (count int, err error) {
@@ -222,7 +208,6 @@ func (this *negotiator_) markNegotiationFailure() {
 
 func (this *negotiator_) markNegotiationSuccess() {
 	if this.state != negotiatorStateFailed {
-		// fmt.Printf("### N %p: lbits %v, ibits %v\n", this, this.LengthBits, this.IdBits)
 		this.state = negotiatorStateFullyNegotiated
 	}
 }
@@ -267,7 +252,6 @@ func (this *negotiator_) Init(lengthMinBits int, lengthMaxBits int,
 	this.messageBuffer = make([]byte, 0, initializeMessageLength)
 
 	if requestQuickInit {
-		this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
 		this.state = negotiatorStateQuickNegotiated
 	} else {
 		this.state = negotiatorStateNotNegotiated
@@ -330,7 +314,6 @@ func (this *negotiator_) negotiateInitializeMessage() error {
 		}
 		this.LengthBits = themLengthBits
 		this.IdBits = themIdBits
-		this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
 	} else {
 		idBits, err := negotiateBitCount("ID", this.idMinBits,
 			this.idMaxBits, this.IdBits,
@@ -347,7 +330,6 @@ func (this *negotiator_) negotiateInitializeMessage() error {
 		}
 
 		this.LengthBits, this.IdBits = capBitCounts(lengthBits, idBits)
-		this.HeaderLength = calculateHeaderLength(this.LengthBits, this.IdBits)
 
 	}
 

@@ -4,89 +4,59 @@ import (
 	"fmt"
 )
 
+const maxInitialBufferCapacity = 1028
+
 type SendableMessage struct {
 	Id int
 
-	// Per-message constants
-	maxChunkLength     int
-	headerLength       int
-	responseBitShifted uint32
-	idShifted          uint32
-	shiftLength        uint
-
 	priority int
+	header   messageHeader_
+	data     []byte
+	isClosed bool
 
-	data []byte
-
-	isClosed  bool
 	idPool    *idPool
 	callbacks MessageSendCallbacks
 }
 
-func boolToUint32(value bool) uint32 {
-	if value {
-		return 1
-	}
-	return 0
-}
-
 func (this *SendableMessage) dataLength() int {
-	return len(this.data) - this.headerLength
+	return len(this.data) - this.header.HeaderLength
 }
 
 func (this *SendableMessage) freeChunkSpace() int {
-	return this.maxChunkLength - this.dataLength()
+	return this.header.MaxChunkLength - this.dataLength()
 }
 
-func (this *SendableMessage) clearData() {
-	this.data = this.data[0:this.headerLength]
-}
-
-func (this *SendableMessage) fillHeader(terminationBit uint32) {
-	headerFields := terminationBit |
-		this.responseBitShifted |
-		this.idShifted |
-		uint32(this.dataLength())<<this.shiftLength
-
-	for i := 0; i < this.headerLength; i++ {
-		this.data[i] = byte(headerFields)
-		headerFields >>= 8
-	}
-	// fmt.Printf("### SM %p: lshift %v, ishift %v\n", this, this.shiftLength, shiftId)
-	// fmt.Printf("### SM %p: Decode header len %v, id %v, resp %v, term %v\n", this, this.dataLength(), this.idShifted>>shiftId, this.responseBitShifted>>shiftResponseBit, terminationBit)
-}
-
-func (this *SendableMessage) sendCurrentChunk(terminationBit uint32) error {
-	this.fillHeader(terminationBit)
-	if err := this.callbacks.OnMessageChunkToSend(this.priority, this.data); err != nil {
-		return err
-	}
-	this.clearData()
-	return nil
+func (this *SendableMessage) sendCurrentChunk(termination bool) error {
+	this.header.SetLengthAndTermination(this.dataLength(), termination)
+	copy(this.data, this.header.Encoded)
+	err := this.callbacks.OnMessageChunkToSend(this.priority, this.data)
+	this.data = this.data[0:this.header.HeaderLength]
+	return err
 }
 
 func newSendableMessage(idPool *idPool, callbacks MessageSendCallbacks,
-	priority int, id int, headerLength int, lengthBits int, idBits int,
-	isResponse bool) *SendableMessage {
+	priority int, id int, lengthBits int, idBits int, isResponse bool) *SendableMessage {
 
 	this := new(SendableMessage)
+	this.Init(idPool, callbacks, priority, id, lengthBits, idBits, isResponse)
+	return this
+}
+
+func (this *SendableMessage) Init(idPool *idPool, callbacks MessageSendCallbacks,
+	priority int, id int, lengthBits int, idBits int, isResponse bool) {
+
+	this.Id = id
 	this.idPool = idPool
 	this.callbacks = callbacks
 	this.priority = priority
-	this.Id = id
-	this.idShifted = uint32(id) << shiftId
-	this.responseBitShifted = boolToUint32(isResponse) << shiftResponseBit
-	this.shiftLength = uint(shiftId + idBits)
-	this.headerLength = headerLength
-	this.maxChunkLength = 1<<uint(lengthBits) - 1
+	this.header.Init(lengthBits, idBits)
+	this.header.SetIdAndResponseNoEncode(id, isResponse)
 
-	initialBufferCapacity := this.maxChunkLength
-	if initialBufferCapacity > 1028 {
-		initialBufferCapacity = 1028
+	initialBufferCapacity := this.header.MaxChunkLength
+	if initialBufferCapacity > maxInitialBufferCapacity {
+		initialBufferCapacity = maxInitialBufferCapacity
 	}
-	this.data = make([]byte, this.headerLength, initialBufferCapacity)
-
-	return this
+	this.data = make([]byte, this.header.HeaderLength, initialBufferCapacity)
 }
 
 func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) error {
@@ -107,19 +77,15 @@ func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) error
 		bytesToSend = bytesToSend[appendByteCount:]
 		this.data = append(this.data, bytesToAppend...)
 		// fmt.Printf("### bytes to send now %v, data now %v\n", len(bytesToSend), len(this.data))
-		doNotTerminateMessage := uint32(0)
-		if err := this.sendCurrentChunk(doNotTerminateMessage); err != nil {
+		termination := false
+		if err := this.sendCurrentChunk(termination); err != nil {
 			// fmt.Printf("### ERROR %v\n", err)
 			return err
 		}
 	}
 
 	this.data = append(this.data, bytesToSend...)
-	termination := uint32(0)
-	if isEndOfData {
-		termination = uint32(1)
-	}
-	if err := this.sendCurrentChunk(termination); err != nil {
+	if err := this.sendCurrentChunk(isEndOfData); err != nil {
 		return err
 	}
 

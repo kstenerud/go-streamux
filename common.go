@@ -1,10 +1,5 @@
 package streamux
 
-const (
-	shiftResponseBit = 1
-	shiftId          = 2
-)
-
 func useBytes(byteCount int, buffer []byte) (usedPortion []byte, remainingPortion []byte) {
 	byteCount = getMaxByteCountAvailable(buffer, byteCount)
 	usedPortion = buffer[:byteCount]

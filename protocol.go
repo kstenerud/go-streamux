@@ -1,9 +1,5 @@
 package streamux
 
-// TODO:
-// - OOB messages
-// - ???
-
 import (
 	"fmt"
 	"math"
@@ -18,8 +14,8 @@ const PriorityOOB = PriorityMax
 type MessageReceiveCallbacks interface {
 	OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error
 	OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error
-	OnPingReceived()
-	OnPingAckReceived(latency time.Duration)
+	OnPingReceived(id int)
+	OnPingAckReceived(id int, latency time.Duration)
 	OnCancelReceived(messageId int)
 	OnCancelAckReceived(messageId int)
 }
@@ -38,14 +34,32 @@ type Protocol struct {
 	idPool                         *idPool
 	callbacks                      MessageSendCallbacks
 	decoderCallbacks               MessageReceiveCallbacks
+	pingSendTimes                  map[int]time.Time
 }
 
-func (this *Protocol) allocateId() int {
-	return this.idPool.AllocateId()
+// Forwarding MessageReceiveCallbacks interface
+func (this *Protocol) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
+	return this.decoderCallbacks.OnRequestChunkReceived(messageId, isEnd, data)
 }
 
-func (this *Protocol) deallocateId(id int) {
-	this.idPool.DeallocateId(id)
+func (this *Protocol) OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error {
+	return this.decoderCallbacks.OnResponseChunkReceived(messageId, isEnd, data)
+}
+
+func (this *Protocol) OnPingReceived(id int) {
+	this.decoderCallbacks.OnPingReceived(id)
+}
+
+func (this *Protocol) OnPingAckReceived(id int, latency time.Duration) {
+	this.decoderCallbacks.OnPingAckReceived(id, latency)
+}
+
+func (this *Protocol) OnCancelReceived(messageId int) {
+	this.decoderCallbacks.OnCancelReceived(messageId)
+}
+
+func (this *Protocol) OnCancelAckReceived(messageId int) {
+	this.decoderCallbacks.OnCancelAckReceived(messageId)
 }
 
 func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
@@ -96,15 +110,10 @@ func (this *Protocol) feedNegotiator(incomingStreamData []byte) ([]byte, error) 
 func (this *Protocol) finishEarlyInitialization() {
 	if !this.hasFinishedEarlyInitialization {
 		this.hasFinishedEarlyInitialization = true
-		this.decoder = newMessageDecoder(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits, this.decoderCallbacks)
+		this.decoder = newMessageDecoder(this.negotiator.LengthBits, this.negotiator.IdBits, this)
 		this.idPool = newIdPool(this.negotiator.IdBits)
 		this.callbacks.OnAbleToSend()
 	}
-}
-
-func (this *Protocol) feedDecoder(incomingStreamData []byte) error {
-	// fmt.Printf("### P %p: Feeding %v bytes to decoder\n", this, len(incomingStreamData))
-	return this.decoder.Feed(incomingStreamData)
 }
 
 func (this *Protocol) sendMessageChunk(priority int, chunk []byte) error {
@@ -150,9 +159,8 @@ func (this *Protocol) BeginMessage(priority int) (*SendableMessage, error) {
 	}
 
 	isResponse := false
-	return newSendableMessage(this.idPool, this.callbacks, priority, this.allocateId(),
-		this.negotiator.HeaderLength, this.negotiator.LengthBits,
-		this.negotiator.IdBits, isResponse), nil
+	return newSendableMessage(this.idPool, this.callbacks, priority, this.idPool.AllocateId(),
+		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
 }
 
 func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*SendableMessage, error) {
@@ -162,60 +170,64 @@ func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*Sen
 
 	isResponse := true
 	return newSendableMessage(nil, this.callbacks, priority, responseToId,
-		this.negotiator.HeaderLength, this.negotiator.LengthBits,
-		this.negotiator.IdBits, isResponse), nil
+		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
 }
 
-func (this *Protocol) emptyMessageHeader(id int, responseBit int, terminationBit int) []byte {
-	headerFields := uint32(terminationBit) |
-		uint32(responseBit)<<shiftResponseBit |
-		uint32(id)<<shiftId
-
-	header := make([]byte, this.negotiator.HeaderLength)
-	for i := 0; i < len(header); i++ {
-		header[i] = byte(headerFields)
-		headerFields >>= 8
-	}
-	return header
+func (this *Protocol) emptyMessageHeader(id int, isResponse bool, isEndOfMessage bool) []byte {
+	var header messageHeader_
+	header.Init(this.negotiator.LengthBits, this.negotiator.IdBits)
+	header.SetAll(id, 0, isResponse, isEndOfMessage)
+	return header.Encoded
 }
 
 func (this *Protocol) Cancel(messageId int) error {
-	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, 0, 0))
+	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, false, false))
 }
 
 func (this *Protocol) cancelAck(messageId int) error {
-	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, 1, 0))
+	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, true, false))
 }
 
-func (this *Protocol) Ping() error {
-	id := this.idPool.AllocateId()
+func (this *Protocol) Ping() (id int, err error) {
+	id = this.idPool.AllocateId()
 	defer this.idPool.DeallocateId(id)
 
-	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(id, 0, 1))
+	if err := this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(id, false, true)); err != nil {
+		return 0, err
+	}
+	this.pingSendTimes[id] = time.Now()
 	// TODO: Store outstanding ping for response ack
 	// TODO: Record ping time?
+
+	return id, nil
 }
 
 func (this *Protocol) pingAck(messageId int) error {
-	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, 1, 1))
+	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, true, true))
 }
 
 func (this *Protocol) Feed(incomingStreamData []byte) error {
-	// fmt.Printf("### P %p: Feed %v bytes. Negotiation complete: %v\n", this, len(incomingStreamData), this.negotiator.IsNegotiationComplete())
+	remainingData := incomingStreamData
+	// fmt.Printf("### P %p: Feed %v bytes. Negotiation complete: %v\n", this, len(remainingData), this.negotiator.IsNegotiationComplete())
 	if !this.negotiator.IsNegotiationComplete() {
 		var err error
-		if incomingStreamData, err = this.feedNegotiator(incomingStreamData); err != nil {
+		if remainingData, err = this.feedNegotiator(remainingData); err != nil {
 			return err
 		}
-		if len(incomingStreamData) == 0 {
+		if len(remainingData) == 0 {
 			return nil
 		}
 	}
 
-	if this.negotiator.CanReceiveMessages() {
-		return this.feedDecoder(incomingStreamData)
-	} else if len(incomingStreamData) > 0 {
+	if len(remainingData) > 0 && !this.negotiator.CanReceiveMessages() {
 		return fmt.Errorf("Can't receive messages: %v", this.negotiator.ExplainFailure())
+	}
+
+	for len(remainingData) > 0 {
+		var err error
+		if remainingData, err = this.decoder.Feed(remainingData); err != nil {
+			return err
+		}
 	}
 
 	return nil

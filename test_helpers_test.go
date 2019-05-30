@@ -80,11 +80,11 @@ func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChanne
 	return this
 }
 
-func (this *testPeer) OnPingReceived() {
+func (this *testPeer) OnPingReceived(id int) {
 
 }
 
-func (this *testPeer) OnPingAckReceived(latency time.Duration) {
+func (this *testPeer) OnPingAckReceived(id int, latency time.Duration) {
 
 }
 
