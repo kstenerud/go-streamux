@@ -31,7 +31,7 @@ func randomUint32() uint32 {
 	}
 }
 
-func NewIdPool(idBits int) *idPool {
+func newIdPool(idBits int) *idPool {
 	this := new(idPool)
 	this.Init(idBits)
 	return this
