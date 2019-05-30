@@ -1,26 +1,23 @@
 package streamux
 
-// TODO: blocking?
-
 import (
 	"crypto/rand"
+	"fmt"
 	mr "math/rand"
 	"sync"
 	"time"
 )
 
-const idPoolPrime = 1001353
-
 type idPool struct {
-	idMask   uint32
-	lastId   uint32
-	maxIds   int
-	inFlight map[uint32]bool
-	returned []uint32
-	mutex    sync.Mutex
+	maxIds        uint32
+	idMask        uint32
+	salt          uint32
+	highestUsedId uint32
+	freedIds      []uint32
+	mutex         sync.Mutex
 }
 
-func randomId() uint32 {
+func randomUint32() uint32 {
 	bytes := make([]byte, 4)
 	if _, err := rand.Read(bytes); err == nil {
 		return uint32(bytes[0])<<24 |
@@ -28,18 +25,27 @@ func randomId() uint32 {
 			uint32(bytes[2])<<8 |
 			uint32(bytes[3])
 	} else {
-		mr.Seed(time.Now().UnixNano())
-		return mr.Uint32()
+		var random mr.Rand
+		random.Seed(time.Now().UnixNano())
+		return random.Uint32()
 	}
 }
 
-func newIdPool(idBits int) *idPool {
+func NewIdPool(idBits int) *idPool {
 	this := new(idPool)
-	this.maxIds = 1 << uint(idBits)
-	this.idMask = 1<<uint(idBits) - 1
-	this.inFlight = make(map[uint32]bool)
-	this.lastId = randomId()
+	this.Init(idBits)
 	return this
+}
+
+func (this *idPool) Init(idBits int) {
+	if idBits < 0 || idBits > 30 {
+		panic(fmt.Errorf("idBits (%v) out of allowed range 0-30", idBits))
+	}
+	this.salt = randomUint32()
+	this.maxIds = 1 << uint(idBits)
+	this.idMask = this.maxIds - 1
+	this.highestUsedId = 0
+	this.highestUsedId--
 }
 
 func (this *idPool) AllocateId() int {
@@ -47,36 +53,25 @@ func (this *idPool) AllocateId() int {
 	defer this.mutex.Unlock()
 
 	var newId uint32
-	returnedLength := len(this.returned)
-	if returnedLength > 0 {
-		newId = this.returned[returnedLength-1]
-		this.returned = this.returned[:returnedLength-1]
+
+	if freedIdsCount := len(this.freedIds); freedIdsCount > 0 {
+		newId = this.freedIds[freedIdsCount-1]
+		this.freedIds = this.freedIds[:freedIdsCount-1]
 	} else {
-		// TODO: This can deadlock since deallocate won't be able to unlock
-		for newId = (this.lastId + idPoolPrime) & this.idMask; true; newId = (newId + idPoolPrime) & this.idMask {
-			if _, exists := this.inFlight[newId]; exists {
-				if len(this.inFlight) >= this.maxIds {
-					// TODO: Full
-				}
-				continue
-			} else {
-				break
-			}
+		newId = this.highestUsedId + 1
+		if newId >= this.maxIds {
+			panic(fmt.Errorf("ID pool exhausted"))
 		}
+		this.highestUsedId = newId
 	}
 
-	this.lastId = newId
-	this.inFlight[newId] = true
-	return int(this.lastId)
+	return int((newId + this.salt) & this.idMask)
 }
 
+// This method is not idempotent. Calling it with a not allocated ID will break things.
 func (this *idPool) DeallocateId(id int) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
-	if _, exists := this.inFlight[uint32(id)]; exists {
-		delete(this.inFlight, uint32(id))
-		this.returned = append(this.returned, uint32(id))
-	}
-	// TODO: Error if it doesn't exist? Or no?
+	this.freedIds = append(this.freedIds, (uint32(id)-this.salt)&this.idMask)
 }

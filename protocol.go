@@ -92,7 +92,7 @@ func (this *Protocol) finishEarlyInitialization() {
 	if !this.hasFinishedEarlyInitialization {
 		this.hasFinishedEarlyInitialization = true
 		this.decoder = newMessageDecoder(this.negotiator.HeaderLength, this.negotiator.LengthBits, this.negotiator.IdBits, this.decoderCallbacks)
-		this.idPool = newIdPool(this.negotiator.IdBits)
+		this.idPool = NewIdPool(this.negotiator.IdBits)
 		this.callbacks.OnAbleToSend()
 	}
 }
