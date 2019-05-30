@@ -94,6 +94,9 @@ func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) error
 		return fmt.Errorf("Message has been closed")
 	}
 
+	// TODO: Don't allow end of data if no bytes have been added since the beginning
+	// except for empty response...
+
 	for len(bytesToSend) > this.freeChunkSpace() {
 		// fmt.Printf("### calc: max chunk length %v, data %v, header length %v\n", this.maxChunkLength, len(this.data), this.headerLength)
 		appendByteCount := this.freeChunkSpace()

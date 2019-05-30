@@ -7,6 +7,7 @@ package streamux
 import (
 	"fmt"
 	"math"
+	"time"
 )
 
 const ProtocolVersion = 1
@@ -17,6 +18,10 @@ const PriorityOOB = PriorityMax
 type MessageReceiveCallbacks interface {
 	OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error
 	OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error
+	OnPingReceived()
+	OnPingAckReceived(latency time.Duration)
+	OnCancelReceived(messageId int)
+	OnCancelAckReceived(messageId int)
 }
 
 type MessageSendCallbacks interface {
@@ -118,14 +123,15 @@ func (this *Protocol) BeginInitialization() error {
 	return nil
 }
 
-func (this *Protocol) SendMessage(priority int, contents []byte) error {
+func (this *Protocol) SendMessage(priority int, contents []byte) (id int, err error) {
 	message, err := this.BeginMessage(priority)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	defer message.Close()
 	isEndOfData := true
-	return message.AddData(contents, isEndOfData)
+	err = message.AddData(contents, isEndOfData)
+	return message.Id, err
 }
 
 func (this *Protocol) SendResponseMessage(priority int, responseToId int, contents []byte) error {
@@ -158,6 +164,40 @@ func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*Sen
 	return newSendableMessage(nil, this.callbacks, priority, responseToId,
 		this.negotiator.HeaderLength, this.negotiator.LengthBits,
 		this.negotiator.IdBits, isResponse), nil
+}
+
+func (this *Protocol) emptyMessageHeader(id int, responseBit int, terminationBit int) []byte {
+	headerFields := uint32(terminationBit) |
+		uint32(responseBit)<<shiftResponseBit |
+		uint32(id)<<shiftId
+
+	header := make([]byte, this.negotiator.HeaderLength)
+	for i := 0; i < len(header); i++ {
+		header[i] = byte(headerFields)
+		headerFields >>= 8
+	}
+	return header
+}
+
+func (this *Protocol) Cancel(messageId int) error {
+	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, 0, 0))
+}
+
+func (this *Protocol) cancelAck(messageId int) error {
+	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, 1, 0))
+}
+
+func (this *Protocol) Ping() error {
+	id := this.idPool.AllocateId()
+	defer this.idPool.DeallocateId(id)
+
+	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(id, 0, 1))
+	// TODO: Store outstanding ping for response ack
+	// TODO: Record ping time?
+}
+
+func (this *Protocol) pingAck(messageId int) error {
+	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, 1, 1))
 }
 
 func (this *Protocol) Feed(incomingStreamData []byte) error {

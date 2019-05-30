@@ -24,7 +24,7 @@ func TestRequestResponse(t *testing.T) {
 	}
 
 	expectedRequest := newTestData(10)
-	if err := a.SendMessage(0, expectedRequest); err != nil {
+	if _, err := a.SendMessage(0, expectedRequest); err != nil {
 		t.Error(err)
 		return
 	}

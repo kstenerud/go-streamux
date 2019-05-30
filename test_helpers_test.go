@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sync"
 	"testing"
+	"time"
 )
 
 func testForPanic(f func()) (err interface{}) {
@@ -79,6 +80,22 @@ func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChanne
 	return this
 }
 
+func (this *testPeer) OnPingReceived() {
+
+}
+
+func (this *testPeer) OnPingAckReceived(latency time.Duration) {
+
+}
+
+func (this *testPeer) OnCancelReceived(messageId int) {
+
+}
+
+func (this *testPeer) OnCancelAckReceived(messageId int) {
+
+}
+
 func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
 	// fmt.Printf("### TP %p: Received request id %v, %v bytes, end %v\n", this, messageId, len(data), isEnd)
 	message, messageFound := this.RequestsReceived[messageId]
@@ -131,7 +148,7 @@ func (this *testPeer) OnMessageChunkToSend(priority int, data []byte) error {
 	return nil
 }
 
-func (this *testPeer) SendMessage(priority int, data []byte) error {
+func (this *testPeer) SendMessage(priority int, data []byte) (int, error) {
 	return this.protocol.SendMessage(priority, data)
 }
 
