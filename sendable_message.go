@@ -131,6 +131,8 @@ func (this *SendableMessage) Close() {
 	if this.isClosed {
 		return
 	}
-	this.idPool.DeallocateId(this.Id)
+	if this.idPool != nil {
+		this.idPool.DeallocateId(this.Id)
+	}
 	this.isClosed = true
 }

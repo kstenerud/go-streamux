@@ -155,7 +155,7 @@ func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*Sen
 	}
 
 	isResponse := true
-	return newSendableMessage(this.idPool, this.callbacks, priority, this.allocateId(),
+	return newSendableMessage(nil, this.callbacks, priority, responseToId,
 		this.negotiator.HeaderLength, this.negotiator.LengthBits,
 		this.negotiator.IdBits, isResponse), nil
 }

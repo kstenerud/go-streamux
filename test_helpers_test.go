@@ -99,6 +99,7 @@ func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []b
 }
 
 func (this *testPeer) OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error {
+	// fmt.Printf("### TP %p: Receive response id %v, %v bytes, end %v\n", this, messageId, len(data), isEnd)
 	message, messageFound := this.ResponsesReceived[messageId]
 	endOfMessage, _ := this.ResponsesEnded[messageId]
 
@@ -130,8 +131,12 @@ func (this *testPeer) OnMessageChunkToSend(priority int, data []byte) error {
 	return nil
 }
 
-func (this *testPeer) SendMessage(data []byte) error {
-	return this.protocol.SendMessage(0, data)
+func (this *testPeer) SendMessage(priority int, data []byte) error {
+	return this.protocol.SendMessage(priority, data)
+}
+
+func (this *testPeer) SendResponse(priority int, id int, data []byte) error {
+	return this.protocol.SendResponseMessage(priority, id, data)
 }
 
 func (this *testPeer) GetFirstRequest() []byte {
@@ -139,10 +144,12 @@ func (this *testPeer) GetFirstRequest() []byte {
 }
 
 func (this *testPeer) GetRequestAtIndex(index int) []byte {
-	// fmt.Printf("### Fetch request index %v. requestOrder contains %v items\n", index, len(this.RequestOrder))
+	return this.GetRequest(this.GetRequestId(index))
+}
+
+func (this *testPeer) GetRequestId(index int) int {
 	if index < len(this.RequestOrder) {
-		// fmt.Printf("#### Request ID is %v\n", this.RequestOrder[index])
-		return this.GetRequest(this.RequestOrder[index])
+		return this.RequestOrder[index]
 	}
 	panic(fmt.Errorf("Request at index %v not found", index))
 }

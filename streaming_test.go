@@ -12,7 +12,7 @@ func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
 	}
 
 	expected := newTestData(dataSize)
-	if err := a.SendMessage(expected); err != nil {
+	if err := a.SendMessage(0, expected); err != nil {
 		t.Error(err)
 		return
 	}
