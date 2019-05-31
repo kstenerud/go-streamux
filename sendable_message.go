@@ -4,50 +4,50 @@ import (
 	"fmt"
 )
 
-const maxInitialBufferCapacity = 1028
+const maxInitialBufferCapacity = 1024 + 4
 
 type SendableMessage struct {
 	Id int
 
-	priority int
-	header   messageHeader_
-	data     []byte
-	isClosed bool
+	priority   int
+	header     messageHeader_
+	chunkData  []byte
+	isEnded    bool
+	chunksSent int
 
-	idPool    *idPool
-	callbacks MessageSendCallbacks
+	messageSender MessageSender
 }
 
 func (this *SendableMessage) dataLength() int {
-	return len(this.data) - this.header.HeaderLength
+	return len(this.chunkData) - this.header.HeaderLength
 }
 
 func (this *SendableMessage) freeChunkSpace() int {
 	return this.header.MaxChunkLength - this.dataLength()
 }
 
-func (this *SendableMessage) sendCurrentChunk(termination bool) error {
-	this.header.SetLengthAndTermination(this.dataLength(), termination)
-	copy(this.data, this.header.Encoded)
-	err := this.callbacks.OnMessageChunkToSend(this.priority, this.data)
-	this.data = this.data[0:this.header.HeaderLength]
+func (this *SendableMessage) sendCurrentChunk() error {
+	this.header.SetLengthAndTermination(this.dataLength(), this.isEnded)
+	copy(this.chunkData, this.header.Encoded)
+	err := this.messageSender.OnMessageChunkToSend(this.priority, this.Id, this.chunkData)
+	this.chunkData = this.chunkData[0:this.header.HeaderLength]
+	this.chunksSent++
 	return err
 }
 
-func newSendableMessage(idPool *idPool, callbacks MessageSendCallbacks,
-	priority int, id int, lengthBits int, idBits int, isResponse bool) *SendableMessage {
+func newSendableMessage(messageSender MessageSender, priority int, id int,
+	lengthBits int, idBits int, isResponse bool) *SendableMessage {
 
 	this := new(SendableMessage)
-	this.Init(idPool, callbacks, priority, id, lengthBits, idBits, isResponse)
+	this.Init(messageSender, priority, id, lengthBits, idBits, isResponse)
 	return this
 }
 
-func (this *SendableMessage) Init(idPool *idPool, callbacks MessageSendCallbacks,
+func (this *SendableMessage) Init(messageSender MessageSender,
 	priority int, id int, lengthBits int, idBits int, isResponse bool) {
 
 	this.Id = id
-	this.idPool = idPool
-	this.callbacks = callbacks
+	this.messageSender = messageSender
 	this.priority = priority
 	this.header.Init(lengthBits, idBits)
 	this.header.SetIdAndResponseNoEncode(id, isResponse)
@@ -56,52 +56,56 @@ func (this *SendableMessage) Init(idPool *idPool, callbacks MessageSendCallbacks
 	if initialBufferCapacity > maxInitialBufferCapacity {
 		initialBufferCapacity = maxInitialBufferCapacity
 	}
-	this.data = make([]byte, this.header.HeaderLength, initialBufferCapacity)
+	this.chunkData = make([]byte, this.header.HeaderLength, initialBufferCapacity)
 }
 
-func (this *SendableMessage) AddData(bytesToSend []byte, isEndOfData bool) error {
-	if this.isClosed {
-		return fmt.Errorf("Message has been closed")
+func (this *SendableMessage) Add(bytesToSend []byte) error {
+	if this.isEnded {
+		return fmt.Errorf("Message has been ended")
 	}
 
-	// TODO: Don't allow end of data if no bytes have been added since the beginning
-	// except for empty response...
-
 	for len(bytesToSend) > this.freeChunkSpace() {
-		// fmt.Printf("### calc: max chunk length %v, data %v, header length %v\n", this.maxChunkLength, len(this.data), this.headerLength)
-		appendByteCount := this.freeChunkSpace()
-		bytesToAppend := bytesToSend[:appendByteCount]
-		// fmt.Printf("### add data: free space %v, bytes to append %v, bytes to send %v, data %v\n",
-		// 	this.freeChunkSpace(), len(bytesToAppend), len(bytesToSend), len(this.data))
-
-		bytesToSend = bytesToSend[appendByteCount:]
-		this.data = append(this.data, bytesToAppend...)
-		// fmt.Printf("### bytes to send now %v, data now %v\n", len(bytesToSend), len(this.data))
-		termination := false
-		if err := this.sendCurrentChunk(termination); err != nil {
+		this.chunkData, bytesToSend = fillBuffer(this.header.HeaderLength+this.header.MaxChunkLength, this.chunkData, bytesToSend)
+		if err := this.sendCurrentChunk(); err != nil {
 			// fmt.Printf("### ERROR %v\n", err)
 			return err
 		}
 	}
 
-	this.data = append(this.data, bytesToSend...)
-	if err := this.sendCurrentChunk(isEndOfData); err != nil {
-		return err
-	}
-
-	if isEndOfData {
-		this.Close()
-	}
+	this.chunkData = append(this.chunkData, bytesToSend...)
 
 	return nil
 }
 
-func (this *SendableMessage) Close() {
-	if this.isClosed {
-		return
+func (this *SendableMessage) Flush() error {
+	if this.dataLength() > 0 {
+		return this.sendCurrentChunk()
 	}
-	if this.idPool != nil {
-		this.idPool.DeallocateId(this.Id)
+	return nil
+
+}
+
+func (this *SendableMessage) End() error {
+	if this.isEnded {
+		return nil
 	}
-	this.isClosed = true
+
+	// Force and update to the message type
+	this.isEnded = true
+	this.header.SetLengthAndTermination(this.dataLength(), this.isEnded)
+
+	// if this.chunksSent == 0 && this.dataLength() == 0 {
+	if this.chunksSent == 0 {
+		switch this.header.MessageType {
+		case messageTypeCancel, messageTypeCancelAck, messageTypePing:
+			return fmt.Errorf("Use OOB message methods to send OOB messages")
+		case messageTypeEmptyResponse:
+			// This is allowed
+		case messageTypeNormal:
+			// This is allowed
+		}
+	}
+
+	return this.sendCurrentChunk()
+
 }

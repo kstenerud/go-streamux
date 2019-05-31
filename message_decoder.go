@@ -58,6 +58,24 @@ func (this *messageDecoder_) Feed(incomingStreamData []byte) (remainingData []by
 			return remainingData, nil
 		}
 		this.bytesRemaining = this.header.Length
+		switch this.header.MessageType {
+		case messageTypeCancel:
+			// fmt.Printf("### Cancel\n")
+			// this.callbacks.OnCancelReceived(this.header.Id)
+			// return remainingData, nil
+		case messageTypeCancelAck:
+			// fmt.Printf("### Cancel Ack\n")
+			// this.callbacks.OnCancelAckReceived(this.header.Id)
+			// return remainingData, nil
+		case messageTypePing:
+			// fmt.Printf("### Ping\n")
+			// this.callbacks.OnPingReceived(this.header.Id)
+			// return remainingData, nil
+		case messageTypeEmptyResponse:
+			// this.callbacks.OnEmptyResponseReceived(this.header.Id)
+			// return remainingData, nil
+		default:
+		}
 	}
 
 	var decodedData []byte

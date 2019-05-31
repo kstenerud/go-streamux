@@ -96,8 +96,14 @@ func (this *testPeer) OnCancelAckReceived(messageId int) {
 
 }
 
+func (this *testPeer) OnEmptyResponseReceived(id int) {
+}
+
 func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
 	// fmt.Printf("### TP %p: Received request id %v, %v bytes, end %v\n", this, messageId, len(data), isEnd)
+	// if isEnd {
+	// 	fmt.Printf("### TP %p: end of message %v\n", this, messageId)
+	// }
 	message, messageFound := this.RequestsReceived[messageId]
 	endOfMessage, _ := this.RequestsEnded[messageId]
 
@@ -149,11 +155,11 @@ func (this *testPeer) OnMessageChunkToSend(priority int, data []byte) error {
 }
 
 func (this *testPeer) SendMessage(priority int, data []byte) (int, error) {
-	return this.protocol.SendMessage(priority, data)
+	return this.protocol.SendRequest(priority, data)
 }
 
 func (this *testPeer) SendResponse(priority int, id int, data []byte) error {
-	return this.protocol.SendResponseMessage(priority, id, data)
+	return this.protocol.SendResponse(priority, id, data)
 }
 
 func (this *testPeer) GetFirstRequest() []byte {

@@ -53,9 +53,3 @@ func TestStream3(t *testing.T) {
 		assertStreamData(t, i, 0, 10)
 	}
 }
-
-func TestEmpty(t *testing.T) {
-	for i := 30; i >= 1; i-- {
-		assertStreamData(t, i, 0, 0)
-	}
-}

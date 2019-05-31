@@ -1,5 +1,9 @@
 package streamux
 
+import (
+	"fmt"
+)
+
 const (
 	shiftResponseBit = 1
 	shiftId          = 2
@@ -69,12 +73,14 @@ func (this *messageHeader_) Init(lengthBits int, idBits int) {
 	this.shiftLength = shiftId + uint(idBits)
 	this.maskLength = 1<<uint(lengthBits) - 1
 	this.MaxChunkLength = 1<<uint(lengthBits) - 1
-	this.Encoded = make([]byte, this.HeaderLength)
+	this.Encoded = make([]byte, 0, this.HeaderLength)
 }
 
-func (this *messageHeader_) setMessageType() {
+func (this *messageHeader_) updateMessageType() {
+	// fmt.Printf("### Length %v, response %v, term %v\n", this.Length, this.IsResponse, this.IsEndOfMessage)
 	if this.Length > 0 {
 		this.MessageType = messageTypeNormal
+		return
 	}
 	if this.IsEndOfMessage {
 		if this.IsResponse {
@@ -97,6 +103,7 @@ func (this *messageHeader_) encodeHeader() {
 		this.idField |
 		uint32(this.Length)<<this.shiftLength
 
+	this.Encoded = this.Encoded[:this.HeaderLength]
 	for i := 0; i < this.HeaderLength; i++ {
 		this.Encoded[i] = byte(headerFields)
 		headerFields >>= 8
@@ -122,23 +129,41 @@ func (this *messageHeader_) SetAll(id int, length int, isResponse bool, isEndOfM
 	this.setIdAndResponse(id, isResponse)
 	this.setLengthAndTermination(length, isEndOfMessage)
 	this.encodeHeader()
-	this.setMessageType()
+	this.updateMessageType()
+}
+
+func (this *messageHeader_) SetIdAndType(id int, messageType messageType) {
+	switch messageType {
+	case messageTypeCancel:
+		this.IsEndOfMessage = false
+		this.IsResponse = false
+	case messageTypeCancelAck:
+		this.IsEndOfMessage = false
+		this.IsResponse = true
+	case messageTypePing:
+		this.IsEndOfMessage = true
+		this.IsResponse = false
+	case messageTypeEmptyResponse:
+		this.IsEndOfMessage = true
+		this.IsResponse = true
+	case messageTypeNormal:
+		panic(fmt.Errorf("Cannot use this API to set message type normal"))
+	}
+	this.Id = id
+	this.Length = 0
+	this.MessageType = messageType
+	this.encodeHeader()
 }
 
 func (this *messageHeader_) SetIdAndResponseNoEncode(id int, isResponse bool) {
 	this.setIdAndResponse(id, isResponse)
-	this.setMessageType()
+	this.updateMessageType()
 }
 
 func (this *messageHeader_) SetLengthAndTermination(length int, isEndOfMessage bool) {
 	this.setLengthAndTermination(length, isEndOfMessage)
 	this.encodeHeader()
-	this.setMessageType()
-}
-
-func (this *messageHeader_) SetLength(length int) {
-	this.Length = length
-	this.encodeHeader()
+	this.updateMessageType()
 }
 
 func (this *messageHeader_) IsDecoded() bool {
@@ -153,10 +178,6 @@ func (this *messageHeader_) Feed(incomingStreamData []byte) (remainingData []byt
 	remainingData = incomingStreamData
 	// fmt.Printf("### MH %p: Feed: headerLength %v, headerBuffer %v, incoming %v\n", this, this.HeaderLength, len(this.Encoded), len(remainingData))
 
-	if this.IsDecoded() {
-		this.ClearEncoded()
-	}
-
 	this.Encoded, remainingData = fillBuffer(this.HeaderLength, this.Encoded, remainingData)
 
 	if this.IsDecoded() {
@@ -169,7 +190,7 @@ func (this *messageHeader_) Feed(incomingStreamData []byte) (remainingData []byt
 		this.IsResponse = ((headerFields >> shiftResponseBit) & 1) == 1
 		this.Id = int((headerFields >> shiftId) & this.maskId)
 		this.Length = int((headerFields >> this.shiftLength) & this.maskLength)
-		this.setMessageType()
+		this.updateMessageType()
 		// fmt.Printf("### MH %p: lshift %v, lmask %v, ishift %v, imask %v\n", this, this.shiftLength, this.maskLength, shiftId, this.maskId)
 		// fmt.Printf("### MH %p: Decode header %08x: len %v, id %v, resp %v, term %v\n", this, headerFields, this.Length, this.Id, this.IsResponse, this.IsEndOfMessage)
 	}

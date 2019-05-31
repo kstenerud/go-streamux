@@ -18,12 +18,17 @@ type MessageReceiveCallbacks interface {
 	OnPingAckReceived(id int, latency time.Duration)
 	OnCancelReceived(messageId int)
 	OnCancelAckReceived(messageId int)
+	OnEmptyResponseReceived(id int)
 }
 
 type MessageSendCallbacks interface {
 	OnNegotiationFailed()
 	OnAbleToSend()
 	OnMessageChunkToSend(priority int, data []byte) error
+}
+
+type MessageSender interface {
+	OnMessageChunkToSend(priority int, messageId int, data []byte) error
 }
 
 type Protocol struct {
@@ -60,6 +65,27 @@ func (this *Protocol) OnCancelReceived(messageId int) {
 
 func (this *Protocol) OnCancelAckReceived(messageId int) {
 	this.decoderCallbacks.OnCancelAckReceived(messageId)
+}
+
+func (this *Protocol) OnEmptyResponseReceived(id int) {
+	this.decoderCallbacks.OnEmptyResponseReceived(id)
+}
+
+//
+
+func (this *Protocol) sendRawMessage(priority int, data []byte) error {
+	return this.callbacks.OnMessageChunkToSend(priority, data)
+}
+
+func (this *Protocol) OnMessageChunkToSend(priority int, messageId int, data []byte) error {
+	err := this.sendRawMessage(priority, data)
+	// TODO: Deal with response & canceling message so we get the ID back.
+	// For now, do it wrong: Auto deallocate at the end of a message.
+	terminationBit := data[0] & 1
+	if terminationBit == 1 {
+		this.idPool.DeallocateId(messageId)
+	}
+	return err
 }
 
 func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
@@ -116,10 +142,6 @@ func (this *Protocol) finishEarlyInitialization() {
 	}
 }
 
-func (this *Protocol) sendMessageChunk(priority int, chunk []byte) error {
-	return this.callbacks.OnMessageChunkToSend(priority, chunk)
-}
-
 func (this *Protocol) BeginInitialization() error {
 	if !this.hasBegunInitialization {
 		this.hasBegunInitialization = true
@@ -127,72 +149,73 @@ func (this *Protocol) BeginInitialization() error {
 			this.finishEarlyInitialization()
 		}
 		// fmt.Printf("### P %p: Sending init message\n", this)
-		return this.sendMessageChunk(PriorityOOB, this.negotiator.BuildInitializeMessage())
+		return this.sendRawMessage(PriorityOOB, this.negotiator.BuildInitializeMessage())
 	}
 	return nil
 }
 
-func (this *Protocol) SendMessage(priority int, contents []byte) (id int, err error) {
-	message, err := this.BeginMessage(priority)
+func (this *Protocol) SendRequest(priority int, contents []byte) (id int, err error) {
+	message, err := this.BeginRequest(priority)
 	if err != nil {
 		return 0, err
 	}
-	defer message.Close()
-	isEndOfData := true
-	err = message.AddData(contents, isEndOfData)
-	return message.Id, err
+	if err = message.Add(contents); err != nil {
+		return message.Id, err
+	}
+	return message.Id, message.End()
 }
 
-func (this *Protocol) SendResponseMessage(priority int, responseToId int, contents []byte) error {
-	message, err := this.BeginResponseMessage(priority, responseToId)
+func (this *Protocol) SendResponse(priority int, responseToId int, contents []byte) error {
+	message, err := this.BeginResponse(priority, responseToId)
 	if err != nil {
 		return err
 	}
-	defer message.Close()
-	isEndOfData := true
-	return message.AddData(contents, isEndOfData)
+	if err = message.Add(contents); err != nil {
+		return err
+	}
+	return message.End()
 }
 
-func (this *Protocol) BeginMessage(priority int) (*SendableMessage, error) {
+func (this *Protocol) BeginRequest(priority int) (*SendableMessage, error) {
 	if !this.negotiator.CanSendMessages() {
 		return nil, fmt.Errorf("Can't send messages: %v", this.negotiator.ExplainFailure())
 	}
 
 	isResponse := false
-	return newSendableMessage(this.idPool, this.callbacks, priority, this.idPool.AllocateId(),
+	return newSendableMessage(this, priority, this.idPool.AllocateId(),
 		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
 }
 
-func (this *Protocol) BeginResponseMessage(priority int, responseToId int) (*SendableMessage, error) {
+func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMessage, error) {
 	if !this.negotiator.CanSendMessages() {
 		return nil, fmt.Errorf("Can't send messages: %v", this.negotiator.ExplainFailure())
 	}
 
 	isResponse := true
-	return newSendableMessage(nil, this.callbacks, priority, responseToId,
+	return newSendableMessage(this, priority, responseToId,
 		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
 }
 
-func (this *Protocol) emptyMessageHeader(id int, isResponse bool, isEndOfMessage bool) []byte {
+func (this *Protocol) newEmptyMessageHeader(id int, messageType messageType) []byte {
 	var header messageHeader_
 	header.Init(this.negotiator.LengthBits, this.negotiator.IdBits)
-	header.SetAll(id, 0, isResponse, isEndOfMessage)
+	header.SetIdAndType(id, messageType)
 	return header.Encoded
 }
 
 func (this *Protocol) Cancel(messageId int) error {
-	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, false, false))
+	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, messageTypeCancel))
 }
 
 func (this *Protocol) cancelAck(messageId int) error {
-	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, true, false))
+	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, messageTypeCancelAck))
 }
 
 func (this *Protocol) Ping() (id int, err error) {
 	id = this.idPool.AllocateId()
 	defer this.idPool.DeallocateId(id)
 
-	if err := this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(id, false, true)); err != nil {
+	if err := this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, messageTypePing)); err != nil {
 		return 0, err
 	}
 	this.pingSendTimes[id] = time.Now()
@@ -203,7 +226,7 @@ func (this *Protocol) Ping() (id int, err error) {
 }
 
 func (this *Protocol) pingAck(messageId int) error {
-	return this.callbacks.OnMessageChunkToSend(PriorityOOB, this.emptyMessageHeader(messageId, true, true))
+	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, messageTypeEmptyResponse))
 }
 
 func (this *Protocol) Feed(incomingStreamData []byte) error {
