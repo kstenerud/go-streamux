@@ -14,11 +14,11 @@ const PriorityOOB = PriorityMax
 type MessageReceiver interface {
 	OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error
 	OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error
-	OnPingReceived(id int)
-	OnPingAckReceived(id int, latency time.Duration)
-	OnCancelReceived(messageId int)
-	OnCancelAckReceived(messageId int)
-	OnEmptyResponseReceived(id int)
+	OnPingReceived(messageId int) error
+	OnPingAckReceived(messageId int, latency time.Duration) error
+	OnCancelReceived(messageId int) error
+	OnCancelAckReceived(messageId int) error
+	OnEmptyResponseReceived(id int) error
 }
 
 type MessageSender interface {
@@ -137,17 +137,13 @@ func (this *Protocol) Ping() (id int, err error) {
 	return id, nil
 }
 
-func (this *Protocol) Feed(incomingStreamData []byte) error {
-	// fmt.Printf("### P %p: Feed %v bytes. Negotiation complete: %v\n", this, len(remainingData), this.negotiator.IsNegotiationComplete())
+func (this *Protocol) Feed(incomingStreamData []byte) (err error) {
+	// fmt.Printf("### P %p: Feed %v bytes. Negotiation complete: %v\n", this, len(incomingStreamData), this.negotiator.IsNegotiationComplete())
 	remainingData := incomingStreamData
 
 	if !this.negotiator.IsNegotiationComplete() {
-		var err error
 		if remainingData, err = this.feedNegotiator(remainingData); err != nil {
 			return err
-		}
-		if len(remainingData) == 0 {
-			return nil
 		}
 	}
 
@@ -178,40 +174,48 @@ func (this *Protocol) OnMessageChunkToSend(priority int, messageId int, data []b
 	return err
 }
 
-// Forwarding MessageReceiver interface
-
 func (this *Protocol) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
+	// TODO: ???
 	return this.receiver.OnRequestChunkReceived(messageId, isEnd, data)
 }
 
 func (this *Protocol) OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error {
+	// TODO: move to available pool if ended?
 	return this.receiver.OnResponseChunkReceived(messageId, isEnd, data)
 }
 
-func (this *Protocol) OnPingReceived(id int) {
-	this.receiver.OnPingReceived(id)
-}
-
-func (this *Protocol) OnPingAckReceived(id int, latency time.Duration) {
-	this.receiver.OnPingAckReceived(id, latency)
-}
-
-func (this *Protocol) OnCancelReceived(messageId int) {
-	this.receiver.OnCancelReceived(messageId)
-}
-
-func (this *Protocol) OnCancelAckReceived(messageId int) {
-	this.receiver.OnCancelAckReceived(messageId)
-}
-
-func (this *Protocol) OnEmptyResponseReceived(id int) {
-	this.receiver.OnEmptyResponseReceived(id)
+func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType messageType) error {
+	switch messageType {
+	case messageTypeCancel:
+		// TODO: Move to cancel pool
+		return this.receiver.OnCancelReceived(messageId)
+	case messageTypeCancelAck:
+		// TODO: Move to available pool
+		return this.receiver.OnCancelAckReceived(messageId)
+	case messageTypeEmptyResponse:
+		// TODO: Check for ping response
+		return this.receiver.OnEmptyResponseReceived(messageId)
+		// var latency time.Duration
+		// return this.receiver.OnPingAckReceived(messageId, latency)
+	case messageTypeRequestEmptyTermination:
+		// TODO: Check for ping
+		return this.receiver.OnPingReceived(messageId)
+	default:
+		// TODO: Bug
+	}
+	return nil
 }
 
 // Internal
 
 type internalMessageSender interface {
 	OnMessageChunkToSend(priority int, messageId int, chunk []byte) error
+}
+
+type internalMessageReceiver interface {
+	OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error
+	OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error
+	OnZeroLengthMessageReceived(messageId int, messageType messageType) error
 }
 
 func (this *Protocol) feedNegotiator(incomingStreamData []byte) (remainingData []byte, err error) {

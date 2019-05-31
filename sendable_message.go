@@ -100,6 +100,7 @@ func (this *SendableMessage) getDataLength() int {
 }
 
 func (this *SendableMessage) sendCurrentChunk() error {
+	// fmt.Printf("### SM %p: Send chunk length %v, end %v\n", this, this.getDataLength(), this.isEnded)
 	this.header.SetLengthAndTermination(this.getDataLength(), this.isEnded)
 	this.chunkData.InsertAtHead(this.header.encoded.Data)
 	err := this.messageSender.OnMessageChunkToSend(this.priority, this.Id, this.chunkData.Data)

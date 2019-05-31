@@ -79,23 +79,24 @@ func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChanne
 	return this
 }
 
-func (this *testPeer) OnPingReceived(id int) {
-
+func (this *testPeer) OnPingReceived(id int) error {
+	return nil
 }
 
-func (this *testPeer) OnPingAckReceived(id int, latency time.Duration) {
-
+func (this *testPeer) OnPingAckReceived(id int, latency time.Duration) error {
+	return nil
 }
 
-func (this *testPeer) OnCancelReceived(messageId int) {
-
+func (this *testPeer) OnCancelReceived(messageId int) error {
+	return nil
 }
 
-func (this *testPeer) OnCancelAckReceived(messageId int) {
-
+func (this *testPeer) OnCancelAckReceived(messageId int) error {
+	return nil
 }
 
-func (this *testPeer) OnEmptyResponseReceived(id int) {
+func (this *testPeer) OnEmptyResponseReceived(id int) error {
+	return nil
 }
 
 func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
