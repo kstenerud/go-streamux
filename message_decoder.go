@@ -4,51 +4,30 @@ import (
 	"fmt"
 )
 
-type messageDecoder_ struct {
-	header         messageHeader_
-	bytesRemaining int
-	callbacks      MessageReceiveCallbacks
+type messageDecoder struct {
+	header             messageHeader
+	remainingByteCount int
+	receiver           MessageReceiver
 }
 
-func (this *messageDecoder_) reset() {
-	this.header.ClearEncoded()
-}
+// API
 
-func (this *messageDecoder_) isMessageChunkComplete() bool {
-	return this.bytesRemaining == 0
-}
-
-func newMessageDecoder(lengthBits int, idBits int, callbacks MessageReceiveCallbacks) *messageDecoder_ {
-	this := new(messageDecoder_)
-	this.Init(lengthBits, idBits, callbacks)
+func newMessageDecoder(lengthBits int, idBits int, receiver MessageReceiver) *messageDecoder {
+	this := new(messageDecoder)
+	this.Init(lengthBits, idBits, receiver)
 	return this
 }
 
-func (this *messageDecoder_) Init(lengthBits int, idBits int, callbacks MessageReceiveCallbacks) {
+func (this *messageDecoder) Init(lengthBits int, idBits int, receiver MessageReceiver) {
 	this.header.Init(lengthBits, idBits)
-	this.callbacks = callbacks
+	this.receiver = receiver
 	this.reset()
 }
 
-func (this *messageDecoder_) notifyMessageData(chunk []byte) error {
-	if this.header.IsResponse {
-		if err := this.callbacks.OnResponseChunkReceived(this.header.Id, this.header.IsEndOfMessage, chunk); err != nil {
-			return err
-		}
-	} else {
-		if err := this.callbacks.OnRequestChunkReceived(this.header.Id, this.header.IsEndOfMessage, chunk); err != nil {
-			return err
-		}
-	}
-	if this.isMessageChunkComplete() {
-		this.reset()
-	}
-	return nil
-}
-
-func (this *messageDecoder_) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
+func (this *messageDecoder) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
 	// fmt.Printf("### D %p: feed id %v. Data length %v. Is header decoded: %v\n", this, this.id, len(incomingStreamData), this.isHeaderDecoded)
 	remainingData = incomingStreamData
+
 	if !this.header.IsDecoded() {
 		remainingData = this.header.Feed(remainingData)
 		if !this.header.IsDecoded() {
@@ -57,37 +36,32 @@ func (this *messageDecoder_) Feed(incomingStreamData []byte) (remainingData []by
 			}
 			return remainingData, nil
 		}
-		this.bytesRemaining = this.header.Length
+
+		this.remainingByteCount = this.header.Length
 		switch this.header.MessageType {
 		case messageTypeCancel:
 			// fmt.Printf("### Cancel\n")
-			// this.callbacks.OnCancelReceived(this.header.Id)
-			// return remainingData, nil
+			this.receiver.OnCancelReceived(this.header.Id)
+			return remainingData, nil
 		case messageTypeCancelAck:
 			// fmt.Printf("### Cancel Ack\n")
-			// this.callbacks.OnCancelAckReceived(this.header.Id)
-			// return remainingData, nil
-		case messageTypePing:
+			this.receiver.OnCancelAckReceived(this.header.Id)
+			return remainingData, nil
+		case messageTypeRequestEmptyTermination:
 			// fmt.Printf("### Ping\n")
-			// this.callbacks.OnPingReceived(this.header.Id)
-			// return remainingData, nil
+			this.receiver.OnPingReceived(this.header.Id)
+			return remainingData, nil
 		case messageTypeEmptyResponse:
-			// this.callbacks.OnEmptyResponseReceived(this.header.Id)
-			// return remainingData, nil
+			this.receiver.OnEmptyResponseReceived(this.header.Id)
+			return remainingData, nil
 		default:
 		}
 	}
 
 	var decodedData []byte
-
-	if this.isMessageChunkComplete() {
-		// fmt.Printf("#### D %p: Message chunk complete. Length %v\n", this, len(decodedData))
-		return remainingData, this.notifyMessageData(decodedData)
-	}
-
 	for len(remainingData) > 0 && !this.isMessageChunkComplete() {
-		decodedData, remainingData = useBytes(this.bytesRemaining, remainingData)
-		this.bytesRemaining -= len(decodedData)
+		decodedData, remainingData = consumeBytes(this.remainingByteCount, remainingData)
+		this.remainingByteCount -= len(decodedData)
 		// fmt.Printf("#### D %p: Message data. Length %v\n", this, len(decodedData))
 		if err := this.notifyMessageData(decodedData); err != nil {
 			fmt.Printf("ERROR %v\n", err)
@@ -95,4 +69,30 @@ func (this *messageDecoder_) Feed(incomingStreamData []byte) (remainingData []by
 		}
 	}
 	return remainingData, nil
+}
+
+// Internal
+
+func (this *messageDecoder) reset() {
+	this.header.ClearEncoded()
+}
+
+func (this *messageDecoder) isMessageChunkComplete() bool {
+	return this.remainingByteCount == 0
+}
+
+func (this *messageDecoder) notifyMessageData(chunk []byte) error {
+	if this.header.IsResponse {
+		if err := this.receiver.OnResponseChunkReceived(this.header.Id, this.header.IsEndOfMessage, chunk); err != nil {
+			return err
+		}
+	} else {
+		if err := this.receiver.OnRequestChunkReceived(this.header.Id, this.header.IsEndOfMessage, chunk); err != nil {
+			return err
+		}
+	}
+	if this.isMessageChunkComplete() {
+		this.reset()
+	}
+	return nil
 }

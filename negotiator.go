@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-type negotiatorState_ int
+type negotiatorState int
 
 const (
 	negotiatorStateNotNegotiated = iota
@@ -13,7 +13,7 @@ const (
 	negotiatorStateFullyNegotiated
 )
 
-type negotiator_ struct {
+type protocolNegotiator struct {
 	LengthBits int
 	IdBits     int
 
@@ -23,8 +23,8 @@ type negotiator_ struct {
 	lengthMaxBits    int
 	idMinBits        int
 	idMaxBits        int
-	messageBuffer    []byte
-	state            negotiatorState_
+	messageBuffer    feedableBuffer
+	state            negotiatorState
 }
 
 const (
@@ -46,6 +46,116 @@ const (
 const initializeMessageLength = 5
 const recommendedWildcard = 31
 const maxTotalBits = 30
+
+// API
+
+func newNegotiator(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+	idMinBits int, idMaxBits int, idRecommendBits int,
+	requestQuickInit bool, allowQuickInit bool) *protocolNegotiator {
+
+	this := new(protocolNegotiator)
+	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
+		idMinBits, idMaxBits, idRecommendBits,
+		requestQuickInit, allowQuickInit)
+
+	return this
+}
+
+func (this *protocolNegotiator) Init(lengthMinBits int, lengthMaxBits int,
+	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
+	requestQuickInit bool, allowQuickInit bool) {
+
+	this.lengthMinBits = lengthMinBits
+	this.lengthMaxBits = lengthMaxBits
+	this.LengthBits = lengthRecommendBits
+	this.idMinBits = idMinBits
+	this.idMaxBits = idMaxBits
+	this.IdBits = idRecommendBits
+	this.requestQuickInit = 0
+	if requestQuickInit {
+		this.requestQuickInit = 1
+	}
+	this.allowQuickInit = 0
+	if allowQuickInit {
+		this.allowQuickInit = 1
+	}
+
+	if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
+		this.idMinBits, this.idMaxBits, this.IdBits, this.requestQuickInit, this.allowQuickInit); err != nil {
+		this.markNegotiationFailure()
+		panic(err)
+	}
+
+	this.messageBuffer.Init(0, initializeMessageLength, initializeMessageLength)
+
+	if requestQuickInit {
+		this.state = negotiatorStateQuickNegotiated
+	} else {
+		this.state = negotiatorStateNotNegotiated
+	}
+}
+
+func (this *protocolNegotiator) BuildInitializeMessage() []byte {
+	requestPieces := this.IdBits |
+		this.idMaxBits<<shiftIdBitsMax |
+		this.idMinBits<<shiftIdBitsMin |
+		this.LengthBits<<shiftLengthBitsRecommended |
+		this.lengthMaxBits<<shiftLengthBitsMax |
+		this.lengthMinBits<<shiftLengthBitsMin |
+		this.requestQuickInit<<shiftQuickInitRequest |
+		this.allowQuickInit<<shiftQuickInitAllowed
+
+	request := []byte{
+		ProtocolVersion,
+		byte(requestPieces >> 24),
+		byte((requestPieces >> 16) & 0xff),
+		byte((requestPieces >> 8) & 0xff),
+		byte(requestPieces & 0xff)}
+	return request
+}
+
+func (this *protocolNegotiator) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
+	remainingData = incomingStreamData
+
+	if !this.IsNegotiationComplete() {
+		remainingData = this.messageBuffer.Feed(remainingData)
+		if !this.messageBuffer.IsFull() {
+			return remainingData, nil
+		}
+
+		if err = this.negotiateInitializeMessage(); err != nil {
+			this.markNegotiationFailure()
+			return remainingData, err
+		}
+		this.markNegotiationSuccess()
+	}
+
+	return remainingData, nil
+}
+
+func (this *protocolNegotiator) CanSendMessages() bool {
+	return this.state == negotiatorStateQuickNegotiated || this.state == negotiatorStateFullyNegotiated
+}
+
+func (this *protocolNegotiator) CanReceiveMessages() bool {
+	return this.state == negotiatorStateFullyNegotiated
+}
+
+func (this *protocolNegotiator) IsNegotiationComplete() bool {
+	return this.state == negotiatorStateFullyNegotiated || this.state == negotiatorStateFailed
+}
+
+func (this *protocolNegotiator) ExplainFailure() string {
+	if this.state == negotiatorStateFailed {
+		return "Negotiation failed"
+	}
+	if this.state == negotiatorStateNotNegotiated {
+		return "Negotiation not complete"
+	}
+	return "Unknown (this is a bug)"
+}
+
+// Internal
 
 func minInt(a, b int) int {
 	if a > b {
@@ -202,72 +312,26 @@ func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
 	return nil
 }
 
-func (this *negotiator_) markNegotiationFailure() {
+func (this *protocolNegotiator) markNegotiationFailure() {
 	this.state = negotiatorStateFailed
 }
 
-func (this *negotiator_) markNegotiationSuccess() {
+func (this *protocolNegotiator) markNegotiationSuccess() {
 	if this.state != negotiatorStateFailed {
 		this.state = negotiatorStateFullyNegotiated
 	}
 }
 
-func newNegotiator(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
-	idMinBits int, idMaxBits int, idRecommendBits int,
-	requestQuickInit bool, allowQuickInit bool) *negotiator_ {
-
-	this := new(negotiator_)
-	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
-		idMinBits, idMaxBits, idRecommendBits,
-		requestQuickInit, allowQuickInit)
-
-	return this
-}
-
-func (this *negotiator_) Init(lengthMinBits int, lengthMaxBits int,
-	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
-	requestQuickInit bool, allowQuickInit bool) {
-
-	this.lengthMinBits = lengthMinBits
-	this.lengthMaxBits = lengthMaxBits
-	this.LengthBits = lengthRecommendBits
-	this.idMinBits = idMinBits
-	this.idMaxBits = idMaxBits
-	this.IdBits = idRecommendBits
-	this.requestQuickInit = 0
-	if requestQuickInit {
-		this.requestQuickInit = 1
-	}
-	this.allowQuickInit = 0
-	if allowQuickInit {
-		this.allowQuickInit = 1
-	}
-
-	if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
-		this.idMinBits, this.idMaxBits, this.IdBits, this.requestQuickInit, this.allowQuickInit); err != nil {
-		this.markNegotiationFailure()
-		panic(err)
-	}
-
-	this.messageBuffer = make([]byte, 0, initializeMessageLength)
-
-	if requestQuickInit {
-		this.state = negotiatorStateQuickNegotiated
-	} else {
-		this.state = negotiatorStateNotNegotiated
-	}
-}
-
-func (this *negotiator_) negotiateInitializeMessage() error {
-	version := int(this.messageBuffer[0])
+func (this *protocolNegotiator) negotiateInitializeMessage() error {
+	version := int(this.messageBuffer.Data[0])
 	if version != ProtocolVersion {
 		return fmt.Errorf("Negotiation failed: Expected protocol version %v, but got %v", ProtocolVersion, version)
 	}
 	message :=
-		uint(this.messageBuffer[1])<<24 |
-			uint(this.messageBuffer[2])<<16 |
-			uint(this.messageBuffer[3])<<8 |
-			uint(this.messageBuffer[4])
+		uint(this.messageBuffer.Data[1])<<24 |
+			uint(this.messageBuffer.Data[2])<<16 |
+			uint(this.messageBuffer.Data[3])<<8 |
+			uint(this.messageBuffer.Data[4])
 
 	themIdBits := int(message & maskRecommended)
 	themIdMaxBits := int((message >> shiftIdBitsMax) & maskMax)
@@ -334,62 +398,4 @@ func (this *negotiator_) negotiateInitializeMessage() error {
 	}
 
 	return nil
-}
-
-func (this *negotiator_) BuildInitializeMessage() []byte {
-	requestPieces := this.IdBits |
-		this.idMaxBits<<shiftIdBitsMax |
-		this.idMinBits<<shiftIdBitsMin |
-		this.LengthBits<<shiftLengthBitsRecommended |
-		this.lengthMaxBits<<shiftLengthBitsMax |
-		this.lengthMinBits<<shiftLengthBitsMin |
-		this.requestQuickInit<<shiftQuickInitRequest |
-		this.allowQuickInit<<shiftQuickInitAllowed
-
-	request := []byte{
-		ProtocolVersion,
-		byte(requestPieces >> 24),
-		byte((requestPieces >> 16) & 0xff),
-		byte((requestPieces >> 8) & 0xff),
-		byte(requestPieces & 0xff)}
-	return request
-}
-
-func (this *negotiator_) Feed(incomingStreamData []byte) ([]byte, error) {
-	if !this.IsNegotiationComplete() {
-		if len(this.messageBuffer) < initializeMessageLength {
-			this.messageBuffer, incomingStreamData = fillBuffer(initializeMessageLength, this.messageBuffer, incomingStreamData)
-			if len(this.messageBuffer) < initializeMessageLength {
-				return incomingStreamData, nil
-			}
-		}
-		if err := this.negotiateInitializeMessage(); err != nil {
-			this.markNegotiationFailure()
-			return incomingStreamData, err
-		}
-		this.markNegotiationSuccess()
-	}
-	return incomingStreamData, nil
-}
-
-func (this *negotiator_) CanSendMessages() bool {
-	return this.state == negotiatorStateQuickNegotiated || this.state == negotiatorStateFullyNegotiated
-}
-
-func (this *negotiator_) CanReceiveMessages() bool {
-	return this.state == negotiatorStateFullyNegotiated
-}
-
-func (this *negotiator_) IsNegotiationComplete() bool {
-	return this.state == negotiatorStateFullyNegotiated || this.state == negotiatorStateFailed
-}
-
-func (this *negotiator_) ExplainFailure() string {
-	if this.state == negotiatorStateFailed {
-		return "Negotiation failed"
-	}
-	if this.state == negotiatorStateNotNegotiated {
-		return "Negotiation not complete"
-	}
-	return "Unknown (this is a bug)"
 }

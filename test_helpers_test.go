@@ -55,7 +55,6 @@ type testPeer struct {
 	ResponsesEnded    map[int]bool
 	RequestOrder      []int
 	AbleToSend        bool
-	NegotiationFailed bool
 }
 
 func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChannel chan []byte, recvChannel chan []byte, wg *sync.WaitGroup) *testPeer {
@@ -136,11 +135,6 @@ func (this *testPeer) OnResponseChunkReceived(messageId int, isEnd bool, data []
 	return nil
 }
 
-func (this *testPeer) OnNegotiationFailed() {
-	// fmt.Printf("### %TP p: Negotiation failed\n", this)
-	this.NegotiationFailed = true
-}
-
 func (this *testPeer) OnAbleToSend() {
 	// fmt.Printf("### Able to send\n")
 	this.AbleToSend = true
@@ -198,7 +192,7 @@ func (this *testPeer) GetResponse(id int) []byte {
 }
 
 func (this *testPeer) BeginInitialization() error {
-	return this.protocol.BeginInitialization()
+	return this.protocol.SendInitialization()
 }
 
 func (this *testPeer) BeginFeeding() {

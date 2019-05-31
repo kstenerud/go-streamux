@@ -74,7 +74,7 @@ func performNegotiation(t *testing.T,
 	themIdMinBits int, themIdMaxBits int, themIdRecommendBits int,
 	themRequestQuickInit bool, themAllowQuickInit bool) (lengthBits int, idBits int, err error) {
 
-	var negotiator negotiator_
+	var negotiator protocolNegotiator
 	assertDoesNotPanic(t, func() {
 		negotiator.Init(
 			usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,

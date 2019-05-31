@@ -10,32 +10,17 @@ type SendableMessage struct {
 	Id int
 
 	priority   int
-	header     messageHeader_
-	chunkData  []byte
+	header     messageHeader
+	chunkData  feedableBuffer
 	isEnded    bool
 	chunksSent int
 
-	messageSender MessageSender
+	messageSender internalMessageSender
 }
 
-func (this *SendableMessage) dataLength() int {
-	return len(this.chunkData) - this.header.HeaderLength
-}
+// API
 
-func (this *SendableMessage) freeChunkSpace() int {
-	return this.header.MaxChunkLength - this.dataLength()
-}
-
-func (this *SendableMessage) sendCurrentChunk() error {
-	this.header.SetLengthAndTermination(this.dataLength(), this.isEnded)
-	copy(this.chunkData, this.header.Encoded)
-	err := this.messageSender.OnMessageChunkToSend(this.priority, this.Id, this.chunkData)
-	this.chunkData = this.chunkData[0:this.header.HeaderLength]
-	this.chunksSent++
-	return err
-}
-
-func newSendableMessage(messageSender MessageSender, priority int, id int,
+func newSendableMessage(messageSender internalMessageSender, priority int, id int,
 	lengthBits int, idBits int, isResponse bool) *SendableMessage {
 
 	this := new(SendableMessage)
@@ -43,7 +28,7 @@ func newSendableMessage(messageSender MessageSender, priority int, id int,
 	return this
 }
 
-func (this *SendableMessage) Init(messageSender MessageSender,
+func (this *SendableMessage) Init(messageSender internalMessageSender,
 	priority int, id int, lengthBits int, idBits int, isResponse bool) {
 
 	this.Id = id
@@ -52,37 +37,36 @@ func (this *SendableMessage) Init(messageSender MessageSender,
 	this.header.Init(lengthBits, idBits)
 	this.header.SetIdAndResponseNoEncode(id, isResponse)
 
-	initialBufferCapacity := this.header.MaxChunkLength
+	initialBufferCapacity := this.header.HeaderLength + this.header.MaxChunkLength
 	if initialBufferCapacity > maxInitialBufferCapacity {
 		initialBufferCapacity = maxInitialBufferCapacity
 	}
-	this.chunkData = make([]byte, this.header.HeaderLength, initialBufferCapacity)
+	this.chunkData.Init(this.header.HeaderLength,
+		this.header.HeaderLength+this.header.MaxChunkLength, initialBufferCapacity)
 }
 
 func (this *SendableMessage) Add(bytesToSend []byte) error {
 	if this.isEnded {
-		return fmt.Errorf("Message has been ended")
+		return fmt.Errorf("Cannot add more data: message has ended")
 	}
 
-	for len(bytesToSend) > this.freeChunkSpace() {
-		this.chunkData, bytesToSend = fillBuffer(this.header.HeaderLength+this.header.MaxChunkLength, this.chunkData, bytesToSend)
+	for len(bytesToSend) > this.chunkData.GetFreeByteCount() {
+		bytesToSend = this.chunkData.Feed(bytesToSend)
 		if err := this.sendCurrentChunk(); err != nil {
-			// fmt.Printf("### ERROR %v\n", err)
 			return err
 		}
 	}
 
-	this.chunkData = append(this.chunkData, bytesToSend...)
+	this.chunkData.Feed(bytesToSend)
 
 	return nil
 }
 
 func (this *SendableMessage) Flush() error {
-	if this.dataLength() > 0 {
+	if this.getDataLength() > 0 {
 		return this.sendCurrentChunk()
 	}
 	return nil
-
 }
 
 func (this *SendableMessage) End() error {
@@ -90,22 +74,36 @@ func (this *SendableMessage) End() error {
 		return nil
 	}
 
-	// Force and update to the message type
 	this.isEnded = true
-	this.header.SetLengthAndTermination(this.dataLength(), this.isEnded)
+	this.header.SetLengthAndTermination(this.getDataLength(), this.isEnded)
 
-	// if this.chunksSent == 0 && this.dataLength() == 0 {
-	if this.chunksSent == 0 {
-		switch this.header.MessageType {
-		case messageTypeCancel, messageTypeCancelAck, messageTypePing:
-			return fmt.Errorf("Use OOB message methods to send OOB messages")
-		case messageTypeEmptyResponse:
-			// This is allowed
-		case messageTypeNormal:
-			// This is allowed
+	switch this.header.MessageType {
+	case messageTypeRequestEmptyTermination:
+		if this.chunksSent == 0 {
+			return fmt.Errorf("A request message must contain at least 1 byte of payload")
 		}
+	case messageTypeCancel, messageTypeCancelAck:
+		return fmt.Errorf("Internal bug: Message type %v should not be possible", this.header.MessageType)
+	case messageTypeRequest, messageTypeResponse, messageTypeEmptyResponse:
+		// These are allowed
+	default:
+		return fmt.Errorf("Internal bug: Unhandled message type: %v", this.header.MessageType)
 	}
 
 	return this.sendCurrentChunk()
+}
 
+// Internal
+
+func (this *SendableMessage) getDataLength() int {
+	return this.chunkData.GetUsedByteCountOverMinimum()
+}
+
+func (this *SendableMessage) sendCurrentChunk() error {
+	this.header.SetLengthAndTermination(this.getDataLength(), this.isEnded)
+	this.chunkData.InsertAtHead(this.header.encoded.Data)
+	err := this.messageSender.OnMessageChunkToSend(this.priority, this.Id, this.chunkData.Data)
+	this.chunkData.Minimize()
+	this.chunksSent++
+	return err
 }
