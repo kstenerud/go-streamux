@@ -1,4 +1,4 @@
-package streamux
+package internal
 
 import (
 	"crypto/rand"
@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-type idPool struct {
+type IdPool struct {
 	maxIds        uint32
 	idMask        uint32
 	salt          uint32
@@ -31,13 +31,13 @@ func randomUint32() uint32 {
 	}
 }
 
-func newIdPool(idBits int) *idPool {
-	this := new(idPool)
+func NewIdPool(idBits int) *IdPool {
+	this := new(IdPool)
 	this.Init(idBits)
 	return this
 }
 
-func (this *idPool) Init(idBits int) {
+func (this *IdPool) Init(idBits int) {
 	if idBits < 0 || idBits > 30 {
 		panic(fmt.Errorf("idBits (%v) out of allowed range 0-30", idBits))
 	}
@@ -48,7 +48,7 @@ func (this *idPool) Init(idBits int) {
 	this.highestUsedId--
 }
 
-func (this *idPool) AllocateId() int {
+func (this *IdPool) AllocateId() int {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 
@@ -69,7 +69,7 @@ func (this *idPool) AllocateId() int {
 }
 
 // This method is not idempotent. Calling it with a not allocated ID will break things.
-func (this *idPool) DeallocateId(id int) {
+func (this *IdPool) DeallocateId(id int) {
 	this.mutex.Lock()
 	defer this.mutex.Unlock()
 

@@ -1,7 +1,9 @@
-package streamux
+package internal
 
 import (
 	"fmt"
+
+	"github.com/kstenerud/go-streamux/internal/buffer"
 )
 
 const (
@@ -9,15 +11,16 @@ const (
 	shiftId          = 2
 )
 
-type messageHeader struct {
+type MessageHeader struct {
 	// Public data (read only)
 	Id             int
 	Length         int
 	IsResponse     bool
 	IsEndOfMessage bool
-	MessageType    messageType
+	MessageType    MessageType
 	HeaderLength   int
 	MaxChunkLength int
+	Encoded        buffer.FeedableBuffer
 
 	// Session constants
 	maskId      uint32
@@ -25,64 +28,52 @@ type messageHeader struct {
 	shiftLength uint
 
 	// Internal
-	encoded          feedableBuffer
 	terminationField uint32
 	responseField    uint32
 	idField          uint32
 }
 
-type messageType int
-
-const (
-	messageTypeRequest messageType = iota
-	messageTypeResponse
-	messageTypeCancel
-	messageTypeCancelAck
-	messageTypeRequestEmptyTermination
-	messageTypeEmptyResponse
-)
-
 // API
 
-func newMessageHeader(lengthBits int, idBits int) *messageHeader {
-	this := new(messageHeader)
+func newMessageHeader(lengthBits int, idBits int) *MessageHeader {
+	this := new(MessageHeader)
 	this.Init(lengthBits, idBits)
 	return this
 }
 
-func (this *messageHeader) Init(lengthBits int, idBits int) {
+func (this *MessageHeader) Init(lengthBits int, idBits int) {
 	this.HeaderLength = calculateHeaderLength(lengthBits, idBits)
 	this.maskId = 1<<uint(idBits) - 1
 	this.shiftLength = shiftId + uint(idBits)
 	this.maskLength = 1<<uint(lengthBits) - 1
 	this.MaxChunkLength = 1<<uint(lengthBits) - 1
-	this.encoded.Init(0, this.HeaderLength, this.HeaderLength)
+	this.Encoded.Init(0, this.HeaderLength, this.HeaderLength)
 }
 
-func (this *messageHeader) SetAll(id int, length int, isResponse bool, isEndOfMessage bool) {
+func (this *MessageHeader) SetAll(id int, length int, isResponse bool, isEndOfMessage bool) {
 	this.setIdAndResponse(id, isResponse)
 	this.setLengthAndTermination(length, isEndOfMessage)
 	this.encodeHeader()
 	this.updateMessageType()
 }
 
-func (this *messageHeader) SetIdAndType(id int, messageType messageType) {
+func (this *MessageHeader) SetIdAndType(id int, messageType MessageType) {
 	switch messageType {
-	case messageTypeCancel:
+	case MessageTypeCancel:
 		this.IsEndOfMessage = false
 		this.IsResponse = false
-	case messageTypeCancelAck:
+	case MessageTypeCancelAck:
 		this.IsEndOfMessage = false
 		this.IsResponse = true
-	case messageTypeRequestEmptyTermination:
+	case MessageTypeRequestEmptyTermination:
 		this.IsEndOfMessage = true
 		this.IsResponse = false
-	case messageTypeEmptyResponse:
+	case MessageTypeEmptyResponse:
 		this.IsEndOfMessage = true
 		this.IsResponse = true
-	case messageTypeRequest:
+	case MessageTypeRequest:
 		panic(fmt.Errorf("Cannot use this API to set message type request"))
-	case messageTypeResponse:
+	case MessageTypeResponse:
 		panic(fmt.Errorf("Cannot use this API to set message type response"))
 	}
 	this.Id = id
@@ -91,36 +82,36 @@ func (this *messageHeader) SetIdAndType(id int, messageType messageType) {
 	this.encodeHeader()
 }
 
-func (this *messageHeader) SetIdAndResponseNoEncode(id int, isResponse bool) {
+func (this *MessageHeader) SetIdAndResponseNoEncode(id int, isResponse bool) {
 	this.setIdAndResponse(id, isResponse)
 	this.updateMessageType()
 }
 
-func (this *messageHeader) SetLengthAndTermination(length int, isEndOfMessage bool) {
+func (this *MessageHeader) SetLengthAndTermination(length int, isEndOfMessage bool) {
 	this.setLengthAndTermination(length, isEndOfMessage)
 	this.encodeHeader()
 	this.updateMessageType()
 }
 
-func (this *messageHeader) IsDecoded() bool {
-	return this.encoded.IsFull()
+func (this *MessageHeader) IsDecoded() bool {
+	return this.Encoded.IsFull()
 }
 
-func (this *messageHeader) ClearEncoded() {
-	this.encoded.Minimize()
+func (this *MessageHeader) ClearEncoded() {
+	this.Encoded.Minimize()
 }
 
-func (this *messageHeader) Feed(incomingStreamData []byte) (remainingData []byte) {
+func (this *MessageHeader) Feed(incomingStreamData []byte) (remainingData []byte) {
 	remainingData = incomingStreamData
 	// fmt.Printf("### MH %p: Feed: headerLength %v, headerBuffer %v, incoming %v\n", this, this.HeaderLength, len(this.Encoded), len(remainingData))
 
-	remainingData = this.encoded.Feed(remainingData)
+	remainingData = this.Encoded.Feed(remainingData)
 
 	if this.IsDecoded() {
 		var headerFields uint32
 		for i := this.HeaderLength - 1; i >= 0; i-- {
 			headerFields <<= 8
-			headerFields |= uint32(this.encoded.Data[i])
+			headerFields |= uint32(this.Encoded.Data[i])
 		}
 		this.IsEndOfMessage = (headerFields & 1) == 1
 		this.IsResponse = ((headerFields >> shiftResponseBit) & 1) == 1
@@ -156,40 +147,40 @@ func calculateHeaderLength(lengthBits, idBits int) int {
 	return 4
 }
 
-func (this *messageHeader) updateMessageType() {
+func (this *MessageHeader) updateMessageType() {
 	// fmt.Printf("### Length %v, response %v, term %v\n", this.Length, this.IsResponse, this.IsEndOfMessage)
 	if this.Length > 0 {
 		if this.IsResponse {
-			this.MessageType = messageTypeResponse
+			this.MessageType = MessageTypeResponse
 			return
 		}
-		this.MessageType = messageTypeRequest
+		this.MessageType = MessageTypeRequest
 		return
 	}
 	if this.IsEndOfMessage {
 		if this.IsResponse {
-			this.MessageType = messageTypeEmptyResponse
+			this.MessageType = MessageTypeEmptyResponse
 			return
 		}
-		this.MessageType = messageTypeRequestEmptyTermination
+		this.MessageType = MessageTypeRequestEmptyTermination
 		return
 	}
 	if this.IsResponse {
-		this.MessageType = messageTypeCancelAck
+		this.MessageType = MessageTypeCancelAck
 		return
 	}
-	this.MessageType = messageTypeCancel
+	this.MessageType = MessageTypeCancel
 }
 
-func (this *messageHeader) encodeHeader() {
+func (this *MessageHeader) encodeHeader() {
 	headerFields := this.terminationField |
 		this.responseField |
 		this.idField |
 		uint32(this.Length)<<this.shiftLength
 
-	this.encoded.Maximize()
+	this.Encoded.Maximize()
 	for i := 0; i < this.HeaderLength; i++ {
-		this.encoded.Data[i] = byte(headerFields)
+		this.Encoded.Data[i] = byte(headerFields)
 		headerFields >>= 8
 	}
 
@@ -197,14 +188,14 @@ func (this *messageHeader) encodeHeader() {
 	// fmt.Printf("### MH %p: Encode header len %v, id %v, resp %v, term %v\n", this, this.Length, this.idField>>shiftId, this.responseField>>shiftResponseBit, this.terminationField)
 }
 
-func (this *messageHeader) setIdAndResponse(id int, isResponse bool) {
+func (this *MessageHeader) setIdAndResponse(id int, isResponse bool) {
 	this.Id = id
 	this.idField = uint32(id) << shiftId
 	this.IsResponse = isResponse
 	this.responseField = boolToUint32(isResponse) << shiftResponseBit
 }
 
-func (this *messageHeader) setLengthAndTermination(length int, isEndOfMessage bool) {
+func (this *MessageHeader) setLengthAndTermination(length int, isEndOfMessage bool) {
 	this.Length = length
 	this.IsEndOfMessage = isEndOfMessage
 	this.terminationField = boolToUint32(isEndOfMessage)

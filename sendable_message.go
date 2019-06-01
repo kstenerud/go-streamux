@@ -2,25 +2,31 @@ package streamux
 
 import (
 	"fmt"
+
+	// "github.com/kstenerud/go-streamux/common"
+	"github.com/kstenerud/go-streamux/internal"
+	"github.com/kstenerud/go-streamux/internal/buffer"
 )
 
 const maxInitialBufferCapacity = 1024 + 4
 
+// A SendableMessage is part of the advanced streamux API, allowing data to be
+// fed into a message incrementally.
 type SendableMessage struct {
 	Id int
 
 	priority   int
-	header     messageHeader
-	chunkData  feedableBuffer
+	header     internal.MessageHeader
+	chunkData  buffer.FeedableBuffer
 	isEnded    bool
 	chunksSent int
 
-	messageSender internalMessageSender
+	messageSender internal.InternalMessageSender
 }
 
 // API
 
-func newSendableMessage(messageSender internalMessageSender, priority int, id int,
+func newSendableMessage(messageSender internal.InternalMessageSender, priority int, id int,
 	lengthBits int, idBits int, isResponse bool) *SendableMessage {
 
 	this := new(SendableMessage)
@@ -28,7 +34,7 @@ func newSendableMessage(messageSender internalMessageSender, priority int, id in
 	return this
 }
 
-func (this *SendableMessage) Init(messageSender internalMessageSender,
+func (this *SendableMessage) Init(messageSender internal.InternalMessageSender,
 	priority int, id int, lengthBits int, idBits int, isResponse bool) {
 
 	this.Id = id
@@ -45,7 +51,10 @@ func (this *SendableMessage) Init(messageSender internalMessageSender,
 		this.header.HeaderLength+this.header.MaxChunkLength, initialBufferCapacity)
 }
 
-func (this *SendableMessage) Add(bytesToSend []byte) error {
+// Feed more data into the message. Data is sent in chunks of the maximum chunk
+// size. Any remaining data that doesn't fill a full chunk will be buffered
+// until the next call to Feed(), Flush(), or End().
+func (this *SendableMessage) Feed(bytesToSend []byte) error {
 	if this.isEnded {
 		return fmt.Errorf("Cannot add more data: message has ended")
 	}
@@ -62,6 +71,9 @@ func (this *SendableMessage) Add(bytesToSend []byte) error {
 	return nil
 }
 
+// Send the next chunk of data, even if the buffer isn't completely full.
+// This will send a non-terminated chunk that is less than the maximum chunk size.
+// It won't send an empty chunk if there's no buffered data.
 func (this *SendableMessage) Flush() error {
 	if this.getDataLength() > 0 {
 		return this.sendCurrentChunk()
@@ -69,6 +81,9 @@ func (this *SendableMessage) Flush() error {
 	return nil
 }
 
+// End this message, flushing the last of the data with the `terminate` bit set.
+// This function will send a chunk even if there's no buffered data, because the
+// peer needs to receive a terminated chunk to know that the message is finished.
 func (this *SendableMessage) End() error {
 	if this.isEnded {
 		return nil
@@ -78,13 +93,13 @@ func (this *SendableMessage) End() error {
 	this.header.SetLengthAndTermination(this.getDataLength(), this.isEnded)
 
 	switch this.header.MessageType {
-	case messageTypeRequestEmptyTermination:
+	case internal.MessageTypeRequestEmptyTermination:
 		if this.chunksSent == 0 {
 			return fmt.Errorf("A request message must contain at least 1 byte of payload")
 		}
-	case messageTypeCancel, messageTypeCancelAck:
+	case internal.MessageTypeCancel, internal.MessageTypeCancelAck:
 		return fmt.Errorf("Internal bug: Message type %v should not be possible", this.header.MessageType)
-	case messageTypeRequest, messageTypeResponse, messageTypeEmptyResponse:
+	case internal.MessageTypeRequest, internal.MessageTypeResponse, internal.MessageTypeEmptyResponse:
 		// These are allowed
 	default:
 		return fmt.Errorf("Internal bug: Unhandled message type: %v", this.header.MessageType)
@@ -102,7 +117,7 @@ func (this *SendableMessage) getDataLength() int {
 func (this *SendableMessage) sendCurrentChunk() error {
 	// fmt.Printf("### SM %p: Send chunk length %v, end %v\n", this, this.getDataLength(), this.isEnded)
 	this.header.SetLengthAndTermination(this.getDataLength(), this.isEnded)
-	this.chunkData.InsertAtHead(this.header.encoded.Data)
+	this.chunkData.OverwriteHead(this.header.Encoded.Data)
 	err := this.messageSender.OnMessageChunkToSend(this.priority, this.Id, this.chunkData.Data)
 	this.chunkData.Minimize()
 	this.chunksSent++

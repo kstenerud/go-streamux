@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math"
 	"time"
+
+	"github.com/kstenerud/go-streamux/common"
+	"github.com/kstenerud/go-streamux/internal"
 )
 
 const ProtocolVersion = 1
@@ -11,29 +14,15 @@ const ProtocolVersion = 1
 const PriorityMax = math.MaxInt32
 const PriorityOOB = PriorityMax
 
-type MessageReceiver interface {
-	OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error
-	OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error
-	OnPingReceived(messageId int) error
-	OnPingAckReceived(messageId int, latency time.Duration) error
-	OnCancelReceived(messageId int) error
-	OnCancelAckReceived(messageId int) error
-	OnEmptyResponseReceived(id int) error
-}
-
-type MessageSender interface {
-	OnAbleToSend()
-	OnMessageChunkToSend(priority int, chunk []byte) error
-}
-
+// Protocol encapsulates the top level API of the streamux protocol.
 type Protocol struct {
 	hasBegunInitialization         bool
 	hasFinishedEarlyInitialization bool
-	negotiator                     protocolNegotiator
-	decoder                        messageDecoder
-	idPool                         idPool
-	sender                         MessageSender
-	receiver                       MessageReceiver
+	negotiator                     internal.ProtocolNegotiator
+	decoder                        internal.MessageDecoder
+	idPool                         internal.IdPool
+	sender                         common.MessageSender
+	receiver                       common.MessageReceiver
 	pingSendTimes                  map[int]time.Time
 }
 
@@ -41,8 +30,8 @@ type Protocol struct {
 
 func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	idMinBits int, idMaxBits int, idRecommendBits int, requestQuickInit bool,
-	allowQuickInit bool, sender MessageSender,
-	receiver MessageReceiver) *Protocol {
+	allowQuickInit bool, sender common.MessageSender,
+	receiver common.MessageReceiver) *Protocol {
 
 	this := new(Protocol)
 	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
@@ -55,10 +44,10 @@ func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 
 func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	idMinBits int, idMaxBits int, idRecommendBits int, requestQuickInit bool,
-	allowQuickInit bool, sender MessageSender,
-	receiver MessageReceiver) {
+	allowQuickInit bool, sender common.MessageSender,
+	receiver common.MessageReceiver) {
 
-	this.negotiator.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
+	this.negotiator.Init(ProtocolVersion, lengthMinBits, lengthMaxBits, lengthRecommendBits,
 		idMinBits, idMaxBits, idRecommendBits,
 		requestQuickInit, allowQuickInit)
 	this.sender = sender
@@ -82,7 +71,7 @@ func (this *Protocol) SendRequest(priority int, contents []byte) (messageId int,
 	if err != nil {
 		return 0, err
 	}
-	if err = message.Add(contents); err != nil {
+	if err = message.Feed(contents); err != nil {
 		return message.Id, err
 	}
 	return message.Id, message.End()
@@ -93,12 +82,14 @@ func (this *Protocol) SendResponse(priority int, responseToId int, contents []by
 	if err != nil {
 		return err
 	}
-	if err = message.Add(contents); err != nil {
+	if err = message.Feed(contents); err != nil {
 		return err
 	}
 	return message.End()
 }
 
+// Advanced API. The SendableMessage returned by this method can be used to incrementally
+// add data to the message being sent. Data will be queued and sent as it fills the maximum chunk length.
 func (this *Protocol) BeginRequest(priority int) (*SendableMessage, error) {
 	if !this.negotiator.CanSendMessages() {
 		return nil, fmt.Errorf("Can't send messages: %v", this.negotiator.ExplainFailure())
@@ -109,6 +100,8 @@ func (this *Protocol) BeginRequest(priority int) (*SendableMessage, error) {
 		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
 }
 
+// Advanced API. The SendableMessage returned by this method can be used to incrementally
+// add data to the message being sent. Data will be queued and sent as it fills the maximum chunk length.
 func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMessage, error) {
 	if !this.negotiator.CanSendMessages() {
 		return nil, fmt.Errorf("Can't send messages: %v", this.negotiator.ExplainFailure())
@@ -120,14 +113,14 @@ func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMe
 }
 
 func (this *Protocol) Cancel(messageId int) error {
-	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, messageTypeCancel))
+	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, internal.MessageTypeCancel))
 }
 
 func (this *Protocol) Ping() (id int, err error) {
 	id = this.idPool.AllocateId()
 	defer this.idPool.DeallocateId(id)
 
-	if err := this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, messageTypeRequestEmptyTermination)); err != nil {
+	if err := this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeRequestEmptyTermination)); err != nil {
 		return 0, err
 	}
 	this.pingSendTimes[id] = time.Now()
@@ -184,20 +177,20 @@ func (this *Protocol) OnResponseChunkReceived(messageId int, isEnd bool, data []
 	return this.receiver.OnResponseChunkReceived(messageId, isEnd, data)
 }
 
-func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType messageType) error {
+func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType internal.MessageType) error {
 	switch messageType {
-	case messageTypeCancel:
+	case internal.MessageTypeCancel:
 		// TODO: Move to cancel pool
 		return this.receiver.OnCancelReceived(messageId)
-	case messageTypeCancelAck:
+	case internal.MessageTypeCancelAck:
 		// TODO: Move to available pool
 		return this.receiver.OnCancelAckReceived(messageId)
-	case messageTypeEmptyResponse:
+	case internal.MessageTypeEmptyResponse:
 		// TODO: Check for ping response
 		return this.receiver.OnEmptyResponseReceived(messageId)
 		// var latency time.Duration
 		// return this.receiver.OnPingAckReceived(messageId, latency)
-	case messageTypeRequestEmptyTermination:
+	case internal.MessageTypeRequestEmptyTermination:
 		// TODO: Check for ping
 		return this.receiver.OnPingReceived(messageId)
 	default:
@@ -207,16 +200,6 @@ func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType mes
 }
 
 // Internal
-
-type internalMessageSender interface {
-	OnMessageChunkToSend(priority int, messageId int, chunk []byte) error
-}
-
-type internalMessageReceiver interface {
-	OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error
-	OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error
-	OnZeroLengthMessageReceived(messageId int, messageType messageType) error
-}
 
 func (this *Protocol) feedNegotiator(incomingStreamData []byte) (remainingData []byte, err error) {
 	// fmt.Printf("### P %p: Feeding %v bytes to negotiator\n", this, len(incomingStreamData))
@@ -249,17 +232,17 @@ func (this *Protocol) sendRawMessage(priority int, data []byte) error {
 	return this.sender.OnMessageChunkToSend(priority, data)
 }
 
-func (this *Protocol) newEmptyMessageHeader(id int, messageType messageType) []byte {
-	var header messageHeader
+func (this *Protocol) newEmptyMessageHeader(id int, messageType internal.MessageType) []byte {
+	var header internal.MessageHeader
 	header.Init(this.negotiator.LengthBits, this.negotiator.IdBits)
 	header.SetIdAndType(id, messageType)
-	return header.encoded.Data
+	return header.Encoded.Data
 }
 
 func (this *Protocol) cancelAck(messageId int) error {
-	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, messageTypeCancelAck))
+	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, internal.MessageTypeCancelAck))
 }
 
 func (this *Protocol) pingAck(messageId int) error {
-	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, messageTypeEmptyResponse))
+	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, internal.MessageTypeEmptyResponse))
 }

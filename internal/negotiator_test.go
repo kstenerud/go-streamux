@@ -1,8 +1,10 @@
-package streamux
+package internal
 
 import (
 	"fmt"
 	"testing"
+
+	"github.com/kstenerud/go-streamux/test"
 )
 
 func buildInitMsg(version, minLen, maxLen, recLen, minId, maxId, recId int, qiReq, qiAllowed bool) []byte {
@@ -45,8 +47,8 @@ func assertNegotiationInitSuccess(t *testing.T,
 	idMinBits int, idMaxBits int, idRecommendBits int,
 	requestQuickInit bool, allowQuickInit bool) {
 
-	assertDoesNotPanic(t, func() {
-		newNegotiator(
+	test.AssertDoesNotPanic(t, func() {
+		NewNegotiator(1,
 			lengthMinBits, lengthMaxBits, lengthRecommendBits,
 			idMinBits, idMaxBits, idRecommendBits,
 			requestQuickInit, allowQuickInit)
@@ -58,8 +60,8 @@ func assertNegotiationInitFail(t *testing.T,
 	idMinBits int, idMaxBits int, idRecommendBits int,
 	requestQuickInit bool, allowQuickInit bool) {
 
-	assertDoesPanic(t, func() {
-		newNegotiator(
+	test.AssertDoesPanic(t, func() {
+		NewNegotiator(1,
 			lengthMinBits, lengthMaxBits, lengthRecommendBits,
 			idMinBits, idMaxBits, idRecommendBits,
 			requestQuickInit, allowQuickInit)
@@ -74,9 +76,9 @@ func performNegotiation(t *testing.T,
 	themIdMinBits int, themIdMaxBits int, themIdRecommendBits int,
 	themRequestQuickInit bool, themAllowQuickInit bool) (lengthBits int, idBits int, err error) {
 
-	var negotiator protocolNegotiator
-	assertDoesNotPanic(t, func() {
-		negotiator.Init(
+	var negotiator ProtocolNegotiator
+	test.AssertDoesNotPanic(t, func() {
+		negotiator.Init(1,
 			usLengthMinBits, usLengthMaxBits, usLengthRecommendBits,
 			usIdMinBits, usIdMaxBits, usIdRecommendBits,
 			usRequestQuickInit, usAllowQuickInit)

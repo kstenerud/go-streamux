@@ -1,52 +1,54 @@
-package streamux
+package internal
 
 import (
 	"testing"
+
+	"github.com/kstenerud/go-streamux/test"
 )
 
 func TestIdPool0BitExhausted(t *testing.T) {
-	pool := newIdPool(0)
+	pool := NewIdPool(0)
 
-	assertDoesNotPanic(t, func() {
+	test.AssertDoesNotPanic(t, func() {
 		pool.AllocateId()
 	})
 
-	assertDoesPanic(t, func() {
+	test.AssertDoesPanic(t, func() {
 		pool.AllocateId()
 	})
 }
 
 func TestIdPool0BitReplace(t *testing.T) {
-	pool := newIdPool(0)
+	pool := NewIdPool(0)
 
-	assertDoesNotPanic(t, func() {
+	test.AssertDoesNotPanic(t, func() {
 		id := pool.AllocateId()
 		pool.DeallocateId(id)
 		pool.AllocateId()
 	})
 
-	assertDoesPanic(t, func() {
+	test.AssertDoesPanic(t, func() {
 		pool.AllocateId()
 	})
 }
 
 func TestIdPool1BitExhausted(t *testing.T) {
-	pool := newIdPool(1)
+	pool := NewIdPool(1)
 
-	assertDoesNotPanic(t, func() {
+	test.AssertDoesNotPanic(t, func() {
 		pool.AllocateId()
 		pool.AllocateId()
 	})
 
-	assertDoesPanic(t, func() {
+	test.AssertDoesPanic(t, func() {
 		pool.AllocateId()
 	})
 }
 
 func TestIdPool1BitReplace(t *testing.T) {
-	pool := newIdPool(1)
+	pool := NewIdPool(1)
 
-	assertDoesNotPanic(t, func() {
+	test.AssertDoesNotPanic(t, func() {
 		id1 := pool.AllocateId()
 		id2 := pool.AllocateId()
 		pool.DeallocateId(id1)
@@ -55,30 +57,30 @@ func TestIdPool1BitReplace(t *testing.T) {
 		pool.AllocateId()
 	})
 
-	assertDoesPanic(t, func() {
+	test.AssertDoesPanic(t, func() {
 		pool.AllocateId()
 	})
 }
 
 func TestIdPool2BitExhausted(t *testing.T) {
-	pool := newIdPool(2)
+	pool := NewIdPool(2)
 
-	assertDoesNotPanic(t, func() {
+	test.AssertDoesNotPanic(t, func() {
 		pool.AllocateId()
 		pool.AllocateId()
 		pool.AllocateId()
 		pool.AllocateId()
 	})
 
-	assertDoesPanic(t, func() {
+	test.AssertDoesPanic(t, func() {
 		pool.AllocateId()
 	})
 }
 
 func TestIdPool2BitReplace(t *testing.T) {
-	pool := newIdPool(2)
+	pool := NewIdPool(2)
 
-	assertDoesNotPanic(t, func() {
+	test.AssertDoesNotPanic(t, func() {
 		id1 := pool.AllocateId()
 		id2 := pool.AllocateId()
 		pool.DeallocateId(id1)
@@ -93,7 +95,7 @@ func TestIdPool2BitReplace(t *testing.T) {
 		pool.AllocateId()
 	})
 
-	assertDoesPanic(t, func() {
+	test.AssertDoesPanic(t, func() {
 		pool.AllocateId()
 	})
 }

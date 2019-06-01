@@ -1,30 +1,32 @@
-package streamux
+package internal
 
 import (
 	"fmt"
+
+	"github.com/kstenerud/go-streamux/internal/buffer"
 )
 
-type messageDecoder struct {
-	header             messageHeader
+type MessageDecoder struct {
+	header             MessageHeader
 	remainingByteCount int
-	receiver           internalMessageReceiver
+	receiver           InternalMessageReceiver
 }
 
 // API
 
-func newMessageDecoder(lengthBits int, idBits int, receiver internalMessageReceiver) *messageDecoder {
-	this := new(messageDecoder)
+func NewMessageDecoder(lengthBits int, idBits int, receiver InternalMessageReceiver) *MessageDecoder {
+	this := new(MessageDecoder)
 	this.Init(lengthBits, idBits, receiver)
 	return this
 }
 
-func (this *messageDecoder) Init(lengthBits int, idBits int, receiver internalMessageReceiver) {
+func (this *MessageDecoder) Init(lengthBits int, idBits int, receiver InternalMessageReceiver) {
 	this.header.Init(lengthBits, idBits)
 	this.receiver = receiver
 	this.reset()
 }
 
-func (this *messageDecoder) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
+func (this *MessageDecoder) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
 	// fmt.Printf("### D %p: feed id %v. Data length %v. Is header decoded: %v\n", this, this.header.Id, len(incomingStreamData), this.header.IsDecoded())
 	remainingData = incomingStreamData
 
@@ -47,7 +49,7 @@ func (this *messageDecoder) Feed(incomingStreamData []byte) (remainingData []byt
 	// fmt.Printf("#### D %p: Remaining data %v, chunk complete %v\n", this, len(remainingData), this.isMessageChunkComplete())
 	for len(remainingData) > 0 && !this.isMessageChunkComplete() {
 		var decodedData []byte
-		decodedData, remainingData = consumeBytes(this.remainingByteCount, remainingData)
+		decodedData, remainingData = buffer.ConsumeBytes(this.remainingByteCount, remainingData)
 		this.remainingByteCount -= len(decodedData)
 		// fmt.Printf("#### D %p: Message data. Length %v\n", this, len(decodedData))
 		if err := this.notifyMessageData(decodedData); err != nil {
@@ -61,15 +63,15 @@ func (this *messageDecoder) Feed(incomingStreamData []byte) (remainingData []byt
 
 // Internal
 
-func (this *messageDecoder) reset() {
+func (this *MessageDecoder) reset() {
 	this.header.ClearEncoded()
 }
 
-func (this *messageDecoder) isMessageChunkComplete() bool {
+func (this *MessageDecoder) isMessageChunkComplete() bool {
 	return this.remainingByteCount == 0
 }
 
-func (this *messageDecoder) notifyMessageData(chunk []byte) error {
+func (this *MessageDecoder) notifyMessageData(chunk []byte) error {
 	if this.header.IsResponse {
 		if err := this.receiver.OnResponseChunkReceived(this.header.Id, this.header.IsEndOfMessage, chunk); err != nil {
 			return err

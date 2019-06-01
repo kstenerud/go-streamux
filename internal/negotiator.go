@@ -1,7 +1,9 @@
-package streamux
+package internal
 
 import (
 	"fmt"
+
+	"github.com/kstenerud/go-streamux/internal/buffer"
 )
 
 type negotiatorState int
@@ -13,9 +15,10 @@ const (
 	negotiatorStateFullyNegotiated
 )
 
-type protocolNegotiator struct {
-	LengthBits int
-	IdBits     int
+type ProtocolNegotiator struct {
+	protocolVersion int
+	LengthBits      int
+	IdBits          int
 
 	requestQuickInit int
 	allowQuickInit   int
@@ -23,7 +26,7 @@ type protocolNegotiator struct {
 	lengthMaxBits    int
 	idMinBits        int
 	idMaxBits        int
-	messageBuffer    feedableBuffer
+	messageBuffer    buffer.FeedableBuffer
 	state            negotiatorState
 }
 
@@ -49,22 +52,23 @@ const maxTotalBits = 30
 
 // API
 
-func newNegotiator(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+func NewNegotiator(protocolVersion int, lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	idMinBits int, idMaxBits int, idRecommendBits int,
-	requestQuickInit bool, allowQuickInit bool) *protocolNegotiator {
+	requestQuickInit bool, allowQuickInit bool) *ProtocolNegotiator {
 
-	this := new(protocolNegotiator)
-	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
+	this := new(ProtocolNegotiator)
+	this.Init(protocolVersion, lengthMinBits, lengthMaxBits, lengthRecommendBits,
 		idMinBits, idMaxBits, idRecommendBits,
 		requestQuickInit, allowQuickInit)
 
 	return this
 }
 
-func (this *protocolNegotiator) Init(lengthMinBits int, lengthMaxBits int,
+func (this *ProtocolNegotiator) Init(protocolVersion int, lengthMinBits int, lengthMaxBits int,
 	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
 	requestQuickInit bool, allowQuickInit bool) {
 
+	this.protocolVersion = protocolVersion
 	this.lengthMinBits = lengthMinBits
 	this.lengthMaxBits = lengthMaxBits
 	this.LengthBits = lengthRecommendBits
@@ -95,7 +99,7 @@ func (this *protocolNegotiator) Init(lengthMinBits int, lengthMaxBits int,
 	}
 }
 
-func (this *protocolNegotiator) BuildInitializeMessage() []byte {
+func (this *ProtocolNegotiator) BuildInitializeMessage() []byte {
 	requestPieces := this.IdBits |
 		this.idMaxBits<<shiftIdBitsMax |
 		this.idMinBits<<shiftIdBitsMin |
@@ -106,7 +110,7 @@ func (this *protocolNegotiator) BuildInitializeMessage() []byte {
 		this.allowQuickInit<<shiftQuickInitAllowed
 
 	request := []byte{
-		ProtocolVersion,
+		byte(this.protocolVersion),
 		byte(requestPieces >> 24),
 		byte((requestPieces >> 16) & 0xff),
 		byte((requestPieces >> 8) & 0xff),
@@ -114,7 +118,7 @@ func (this *protocolNegotiator) BuildInitializeMessage() []byte {
 	return request
 }
 
-func (this *protocolNegotiator) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
+func (this *ProtocolNegotiator) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
 	remainingData = incomingStreamData
 
 	if !this.IsNegotiationComplete() {
@@ -133,19 +137,19 @@ func (this *protocolNegotiator) Feed(incomingStreamData []byte) (remainingData [
 	return remainingData, nil
 }
 
-func (this *protocolNegotiator) CanSendMessages() bool {
+func (this *ProtocolNegotiator) CanSendMessages() bool {
 	return this.state == negotiatorStateQuickNegotiated || this.state == negotiatorStateFullyNegotiated
 }
 
-func (this *protocolNegotiator) CanReceiveMessages() bool {
+func (this *ProtocolNegotiator) CanReceiveMessages() bool {
 	return this.state == negotiatorStateFullyNegotiated
 }
 
-func (this *protocolNegotiator) IsNegotiationComplete() bool {
+func (this *ProtocolNegotiator) IsNegotiationComplete() bool {
 	return this.state == negotiatorStateFullyNegotiated || this.state == negotiatorStateFailed
 }
 
-func (this *protocolNegotiator) ExplainFailure() string {
+func (this *ProtocolNegotiator) ExplainFailure() string {
 	if this.state == negotiatorStateFailed {
 		return "Negotiation failed"
 	}
@@ -312,20 +316,20 @@ func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
 	return nil
 }
 
-func (this *protocolNegotiator) markNegotiationFailure() {
+func (this *ProtocolNegotiator) markNegotiationFailure() {
 	this.state = negotiatorStateFailed
 }
 
-func (this *protocolNegotiator) markNegotiationSuccess() {
+func (this *ProtocolNegotiator) markNegotiationSuccess() {
 	if this.state != negotiatorStateFailed {
 		this.state = negotiatorStateFullyNegotiated
 	}
 }
 
-func (this *protocolNegotiator) negotiateInitializeMessage() error {
+func (this *ProtocolNegotiator) negotiateInitializeMessage() error {
 	version := int(this.messageBuffer.Data[0])
-	if version != ProtocolVersion {
-		return fmt.Errorf("Negotiation failed: Expected protocol version %v, but got %v", ProtocolVersion, version)
+	if version != this.protocolVersion {
+		return fmt.Errorf("Negotiation failed: Expected protocol version %v, but got %v", this.protocolVersion, version)
 	}
 	message :=
 		uint(this.messageBuffer.Data[1])<<24 |

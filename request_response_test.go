@@ -3,6 +3,8 @@ package streamux
 import (
 	"testing"
 	"time"
+
+	"github.com/kstenerud/go-streamux/test"
 )
 
 // TODO: Response to nonexistent request
@@ -23,7 +25,7 @@ func TestRequestResponse(t *testing.T) {
 		return
 	}
 
-	expectedRequest := newTestData(10)
+	expectedRequest := test.NewTestBytes(10)
 	if _, err := a.SendMessage(0, expectedRequest); err != nil {
 		t.Error(err)
 		return
@@ -33,7 +35,7 @@ func TestRequestResponse(t *testing.T) {
 
 	id := b.GetRequestId(0)
 
-	expectedResponse := newTestData(15)
+	expectedResponse := test.NewTestBytes(15)
 	if err := b.SendResponse(0, id, expectedResponse); err != nil {
 		t.Error(err)
 		return
@@ -45,11 +47,11 @@ func TestRequestResponse(t *testing.T) {
 	a.Wait()
 
 	actualRequest := b.GetRequest(id)
-	if err := assertSlicesAreEquivalent(actualRequest, expectedRequest); err != nil {
+	if err := test.AssertSlicesAreEquivalent(actualRequest, expectedRequest); err != nil {
 		t.Error(err)
 	}
 	actualResponse := a.GetResponse(id)
-	if err := assertSlicesAreEquivalent(actualResponse, expectedResponse); err != nil {
+	if err := test.AssertSlicesAreEquivalent(actualResponse, expectedResponse); err != nil {
 		t.Error(err)
 	}
 }

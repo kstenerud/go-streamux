@@ -7,42 +7,6 @@ import (
 	"time"
 )
 
-func testForPanic(f func()) (err interface{}) {
-	defer func() {
-		err = recover()
-	}()
-
-	f()
-
-	return err
-}
-
-func assertDoesNotPanic(t *testing.T, f func()) {
-	if err := testForPanic(f); err != nil {
-		t.Error(err)
-	}
-}
-
-func assertDoesPanic(t *testing.T, f func()) {
-	if err := testForPanic(f); err == nil {
-		t.Errorf("Expected panic but none occurred")
-	}
-}
-
-func assertSlicesAreEquivalent(actual, expected []byte) error {
-	if len(actual) != len(expected) {
-		return fmt.Errorf("Slices are of diffrent lengths (actual = %v, expected = %v)", len(actual), len(expected))
-	}
-
-	for i := 0; i < len(actual); i++ {
-		if actual[i] != expected[i] {
-			return fmt.Errorf("Slices differ at index %v", i)
-		}
-	}
-
-	return nil
-}
-
 type testPeer struct {
 	t                 *testing.T
 	protocol          *Protocol
@@ -237,12 +201,4 @@ func newTestPeerPair(t *testing.T, lengthBits, idBits int) (client, server *test
 	}
 
 	return client, server, nil
-}
-
-func newTestData(length int) []byte {
-	data := make([]byte, length)
-	for i := 0; i < length; i++ {
-		data[i] = byte(i & 0xff)
-	}
-	return data
 }

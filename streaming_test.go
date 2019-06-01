@@ -2,6 +2,8 @@ package streamux
 
 import (
 	"testing"
+
+	"github.com/kstenerud/go-streamux/test"
 )
 
 func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
@@ -11,7 +13,7 @@ func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
 		return
 	}
 
-	expected := newTestData(dataSize)
+	expected := test.NewTestBytes(dataSize)
 	if _, err := a.SendMessage(0, expected); err != nil {
 		t.Error(err)
 		return
@@ -23,7 +25,7 @@ func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
 	a.Wait()
 
 	actual := b.GetFirstRequest()
-	if err := assertSlicesAreEquivalent(actual, expected); err != nil {
+	if err := test.AssertSlicesAreEquivalent(actual, expected); err != nil {
 		t.Error(err)
 	}
 }
