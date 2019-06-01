@@ -5,7 +5,6 @@ import (
 	"math"
 	"time"
 
-	"github.com/kstenerud/go-streamux/common"
 	"github.com/kstenerud/go-streamux/internal"
 )
 
@@ -21,8 +20,8 @@ type Protocol struct {
 	negotiator                     internal.ProtocolNegotiator
 	decoder                        internal.MessageDecoder
 	idPool                         internal.IdPool
-	sender                         common.MessageSender
-	receiver                       common.MessageReceiver
+	sender                         MessageSender
+	receiver                       MessageReceiver
 	pingSendTimes                  map[int]time.Time
 }
 
@@ -30,8 +29,8 @@ type Protocol struct {
 
 func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	idMinBits int, idMaxBits int, idRecommendBits int, requestQuickInit bool,
-	allowQuickInit bool, sender common.MessageSender,
-	receiver common.MessageReceiver) *Protocol {
+	allowQuickInit bool, sender MessageSender,
+	receiver MessageReceiver) *Protocol {
 
 	this := new(Protocol)
 	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
@@ -44,8 +43,8 @@ func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 
 func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	idMinBits int, idMaxBits int, idRecommendBits int, requestQuickInit bool,
-	allowQuickInit bool, sender common.MessageSender,
-	receiver common.MessageReceiver) {
+	allowQuickInit bool, sender MessageSender,
+	receiver MessageReceiver) {
 
 	this.negotiator.Init(ProtocolVersion, lengthMinBits, lengthMaxBits, lengthRecommendBits,
 		idMinBits, idMaxBits, idRecommendBits,
