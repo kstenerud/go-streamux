@@ -3,7 +3,6 @@ package streamux
 import (
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/kstenerud/go-streamux/internal"
 )
@@ -19,10 +18,9 @@ type Protocol struct {
 	hasFinishedEarlyInitialization bool
 	negotiator                     internal.ProtocolNegotiator
 	decoder                        internal.MessageDecoder
-	idPool                         internal.IdPool
+	requestRules                   internal.RequestFlightRules
 	sender                         MessageSender
 	receiver                       MessageReceiver
-	pingSendTimes                  map[int]time.Time
 }
 
 // API
@@ -89,14 +87,17 @@ func (this *Protocol) SendResponse(priority int, responseToId int, contents []by
 
 // Advanced API. The SendableMessage returned by this method can be used to incrementally
 // add data to the message being sent. Data will be queued and sent as it fills the maximum chunk length.
-func (this *Protocol) BeginRequest(priority int) (*SendableMessage, error) {
+func (this *Protocol) BeginRequest(priority int) (message *SendableMessage, err error) {
 	if !this.negotiator.CanSendMessages() {
 		return nil, fmt.Errorf("Can't send messages: %v", this.negotiator.ExplainFailure())
 	}
 
-	isResponse := false
-	return newSendableMessage(this, priority, this.idPool.AllocateId(),
-		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
+	err = this.requestRules.TryBeginRequest(func(id int) {
+		isResponse := false
+		message = newSendableMessage(this, priority, id,
+			this.negotiator.LengthBits, this.negotiator.IdBits, isResponse)
+	})
+	return message, err
 }
 
 // Advanced API. The SendableMessage returned by this method can be used to incrementally
@@ -111,22 +112,24 @@ func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMe
 		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
 }
 
-func (this *Protocol) Cancel(messageId int) error {
-	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, internal.MessageTypeCancel))
+func (this *Protocol) Cancel(messageId int) (err error) {
+	var innerErr error
+	err = this.requestRules.TryCancelRequest(messageId, func(id int) {
+		innerErr = this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeCancel))
+	})
+	if err == nil {
+		err = innerErr
+	}
+	return err
 }
 
 func (this *Protocol) Ping() (id int, err error) {
-	id = this.idPool.AllocateId()
-	defer this.idPool.DeallocateId(id)
+	this.requestRules.TryPing(func(newId int) {
+		id = newId
+		err = this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeRequestEmptyTermination))
+	})
 
-	if err := this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeRequestEmptyTermination)); err != nil {
-		return 0, err
-	}
-	this.pingSendTimes[id] = time.Now()
-	// TODO: Store outstanding ping for response ack
-	// TODO: Record ping time?
-
-	return id, nil
+	return id, err
 }
 
 func (this *Protocol) Feed(incomingStreamData []byte) (err error) {
@@ -156,46 +159,39 @@ func (this *Protocol) Feed(incomingStreamData []byte) (err error) {
 // Callbacks
 
 func (this *Protocol) OnMessageChunkToSend(priority int, messageId int, data []byte) error {
-	err := this.sendRawMessage(priority, data)
-	// TODO: Deal with response & canceling message so we get the ID back.
-	// For now, do it wrong: Auto deallocate at the end of a message.
-	terminationBit := data[0] & 1
-	if terminationBit == 1 {
-		this.idPool.DeallocateId(messageId)
-	}
-	return err
+	return this.sendRawMessage(priority, data)
 }
 
 func (this *Protocol) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
-	// TODO: ???
+	// TODO: keep track of chunks-in-progress so that we can detect ping and ping response
 	return this.receiver.OnRequestChunkReceived(messageId, isEnd, data)
 }
 
-func (this *Protocol) OnResponseChunkReceived(messageId int, isEnd bool, data []byte) error {
-	// TODO: move to available pool if ended?
-	return this.receiver.OnResponseChunkReceived(messageId, isEnd, data)
+func (this *Protocol) OnResponseChunkReceived(messageId int, isEnd bool, data []byte) (err error) {
+	this.requestRules.TryReceiveResponseChunk(messageId, isEnd, func(id int, isTerminated bool) {
+		err = this.receiver.OnResponseChunkReceived(id, isTerminated, data)
+	})
+	return err
 }
 
-func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType internal.MessageType) error {
+func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType internal.MessageType) (err error) {
 	switch messageType {
 	case internal.MessageTypeCancel:
-		// TODO: Move to cancel pool
 		return this.receiver.OnCancelReceived(messageId)
 	case internal.MessageTypeCancelAck:
-		// TODO: Move to available pool
-		return this.receiver.OnCancelAckReceived(messageId)
+		this.requestRules.TryReceiveCancelAck(messageId, func(id int) {
+			err = this.receiver.OnCancelAckReceived(messageId)
+		})
 	case internal.MessageTypeEmptyResponse:
 		// TODO: Check for ping response
 		return this.receiver.OnEmptyResponseReceived(messageId)
-		// var latency time.Duration
-		// return this.receiver.OnPingAckReceived(messageId, latency)
 	case internal.MessageTypeRequestEmptyTermination:
 		// TODO: Check for ping
 		return this.receiver.OnPingReceived(messageId)
 	default:
 		// TODO: Bug
 	}
-	return nil
+	return err
 }
 
 // Internal
@@ -222,7 +218,7 @@ func (this *Protocol) finishEarlyInitialization() {
 	if !this.hasFinishedEarlyInitialization {
 		this.hasFinishedEarlyInitialization = true
 		this.decoder.Init(this.negotiator.LengthBits, this.negotiator.IdBits, this)
-		this.idPool.Init(this.negotiator.IdBits)
+		this.requestRules.Init(internal.NewIdPool(this.negotiator.IdBits))
 		this.sender.OnAbleToSend()
 	}
 }

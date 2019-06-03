@@ -2,100 +2,86 @@ package internal
 
 import (
 	"testing"
-
-	"github.com/kstenerud/go-streamux/test"
 )
+
+func assertAllocateSucceeds(t *testing.T, pool *IdPool) int {
+	if id, ok := pool.AllocateId(); ok {
+		return id
+	} else {
+		t.Errorf("ID pool exhausted")
+		return 0
+	}
+}
+
+func assertAllocateFails(t *testing.T, pool *IdPool) int {
+	if id, ok := pool.AllocateId(); ok {
+		t.Errorf("ID allocation should have failed, but instead returned %v", id)
+		return 0
+	} else {
+		return 0
+	}
+}
 
 func TestIdPool0BitExhausted(t *testing.T) {
 	pool := NewIdPool(0)
 
-	test.AssertDoesNotPanic(t, func() {
-		pool.AllocateId()
-	})
-
-	test.AssertDoesPanic(t, func() {
-		pool.AllocateId()
-	})
+	assertAllocateSucceeds(t, pool)
+	assertAllocateFails(t, pool)
 }
 
 func TestIdPool0BitReplace(t *testing.T) {
 	pool := NewIdPool(0)
 
-	test.AssertDoesNotPanic(t, func() {
-		id := pool.AllocateId()
-		pool.DeallocateId(id)
-		pool.AllocateId()
-	})
-
-	test.AssertDoesPanic(t, func() {
-		pool.AllocateId()
-	})
+	id := assertAllocateSucceeds(t, pool)
+	pool.DeallocateId(id)
+	assertAllocateSucceeds(t, pool)
+	assertAllocateFails(t, pool)
 }
 
 func TestIdPool1BitExhausted(t *testing.T) {
 	pool := NewIdPool(1)
 
-	test.AssertDoesNotPanic(t, func() {
-		pool.AllocateId()
-		pool.AllocateId()
-	})
-
-	test.AssertDoesPanic(t, func() {
-		pool.AllocateId()
-	})
+	assertAllocateSucceeds(t, pool)
+	assertAllocateSucceeds(t, pool)
+	assertAllocateFails(t, pool)
 }
 
 func TestIdPool1BitReplace(t *testing.T) {
 	pool := NewIdPool(1)
 
-	test.AssertDoesNotPanic(t, func() {
-		id1 := pool.AllocateId()
-		id2 := pool.AllocateId()
-		pool.DeallocateId(id1)
-		pool.AllocateId()
-		pool.DeallocateId(id2)
-		pool.AllocateId()
-	})
-
-	test.AssertDoesPanic(t, func() {
-		pool.AllocateId()
-	})
+	id1 := assertAllocateSucceeds(t, pool)
+	id2 := assertAllocateSucceeds(t, pool)
+	pool.DeallocateId(id1)
+	assertAllocateSucceeds(t, pool)
+	pool.DeallocateId(id2)
+	assertAllocateSucceeds(t, pool)
+	assertAllocateFails(t, pool)
 }
 
 func TestIdPool2BitExhausted(t *testing.T) {
 	pool := NewIdPool(2)
 
-	test.AssertDoesNotPanic(t, func() {
-		pool.AllocateId()
-		pool.AllocateId()
-		pool.AllocateId()
-		pool.AllocateId()
-	})
-
-	test.AssertDoesPanic(t, func() {
-		pool.AllocateId()
-	})
+	assertAllocateSucceeds(t, pool)
+	assertAllocateSucceeds(t, pool)
+	assertAllocateSucceeds(t, pool)
+	assertAllocateSucceeds(t, pool)
+	assertAllocateFails(t, pool)
 }
 
 func TestIdPool2BitReplace(t *testing.T) {
 	pool := NewIdPool(2)
 
-	test.AssertDoesNotPanic(t, func() {
-		id1 := pool.AllocateId()
-		id2 := pool.AllocateId()
-		pool.DeallocateId(id1)
-		pool.AllocateId()
-		id3 := pool.AllocateId()
-		pool.AllocateId()
-		pool.DeallocateId(id3)
-		id4 := pool.AllocateId()
-		pool.DeallocateId(id4)
-		pool.AllocateId()
-		pool.DeallocateId(id2)
-		pool.AllocateId()
-	})
-
-	test.AssertDoesPanic(t, func() {
-		pool.AllocateId()
-	})
+	id1 := assertAllocateSucceeds(t, pool)
+	id2 := assertAllocateSucceeds(t, pool)
+	pool.DeallocateId(id1)
+	assertAllocateSucceeds(t, pool)
+	id3 := assertAllocateSucceeds(t, pool)
+	assertAllocateSucceeds(t, pool)
+	pool.DeallocateId(id3)
+	id4 := assertAllocateSucceeds(t, pool)
+	pool.DeallocateId(id4)
+	assertAllocateSucceeds(t, pool)
+	pool.DeallocateId(id2)
+	assertAllocateSucceeds(t, pool)
+	assertAllocateFails(t, pool)
 }

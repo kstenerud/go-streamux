@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"fmt"
 	mr "math/rand"
-	"sync"
 	"time"
 )
+
+// TODO: implement a kind of circular buffer for freed ids?
+// have minimum number of freed ids before recycling them to prevent thrashing?
 
 type IdPool struct {
 	maxIds        uint32
@@ -14,7 +16,6 @@ type IdPool struct {
 	salt          uint32
 	highestUsedId uint32
 	freedIds      []uint32
-	mutex         sync.Mutex
 }
 
 func randomUint32() uint32 {
@@ -48,10 +49,7 @@ func (this *IdPool) Init(idBits int) {
 	this.highestUsedId--
 }
 
-func (this *IdPool) AllocateId() int {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
+func (this *IdPool) AllocateId() (id int, ok bool) {
 	var newId uint32
 
 	if freedIdsCount := len(this.freedIds); freedIdsCount > 0 {
@@ -60,18 +58,15 @@ func (this *IdPool) AllocateId() int {
 	} else {
 		newId = this.highestUsedId + 1
 		if newId >= this.maxIds {
-			panic(fmt.Errorf("ID pool exhausted"))
+			return 0, false
 		}
 		this.highestUsedId = newId
 	}
 
-	return int((newId + this.salt) & this.idMask)
+	return int((newId + this.salt) & this.idMask), true
 }
 
 // This method is not idempotent. Calling it with a not allocated ID will break things.
 func (this *IdPool) DeallocateId(id int) {
-	this.mutex.Lock()
-	defer this.mutex.Unlock()
-
 	this.freedIds = append(this.freedIds, (uint32(id)-this.salt)&this.idMask)
 }
