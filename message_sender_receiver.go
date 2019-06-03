@@ -30,5 +30,5 @@ type MessageSender interface {
 	// Signals that there is message data available to send over your
 	// communications channel. Higher priority data should be sent before
 	// lower priority data.
-	OnMessageChunkToSend(priority int, chunk []byte) error
+	OnMessageChunkToSend(priority int, messageId int, chunk []byte) error
 }

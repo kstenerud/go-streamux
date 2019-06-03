@@ -114,11 +114,15 @@ func (this *SendableMessage) getDataLength() int {
 	return this.chunkData.GetUsedByteCountOverMinimum()
 }
 
-func (this *SendableMessage) sendCurrentChunk() error {
-	// fmt.Printf("### SM %p: Send chunk length %v, end %v\n", this, this.getDataLength(), this.isEnded)
+func (this *SendableMessage) sendCurrentChunk() (err error) {
+	// fmt.Printf("### SM %p: Send chunk length %v, response %v, end %v\n", this, this.getDataLength(), this.header.IsResponse, this.isEnded)
 	this.header.SetLengthAndTermination(this.getDataLength(), this.isEnded)
 	this.chunkData.OverwriteHead(this.header.Encoded.Data)
-	err := this.messageSender.OnMessageChunkToSend(this.priority, this.Id, this.chunkData.Data)
+	if this.header.IsResponse {
+		err = this.messageSender.OnResponseChunkToSend(this.priority, this.Id, this.header.IsEndOfMessage, this.chunkData.Data)
+	} else {
+		err = this.messageSender.OnRequestChunkToSend(this.priority, this.Id, this.header.IsEndOfMessage, this.chunkData.Data)
+	}
 	this.chunkData.Minimize()
 	this.chunksSent++
 	return err

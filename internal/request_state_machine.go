@@ -5,7 +5,7 @@ import (
 	"sync"
 )
 
-type RequestFlightRules struct {
+type RequestStateMachine struct {
 	idPool   *IdPool
 	requests map[int]requestState
 	mutex    sync.Mutex
@@ -13,18 +13,18 @@ type RequestFlightRules struct {
 
 // API
 
-func NewRequestFlightRules(idPool *IdPool) *RequestFlightRules {
-	this := new(RequestFlightRules)
+func NewRequestStateMachine(idPool *IdPool) *RequestStateMachine {
+	this := new(RequestStateMachine)
 	this.Init(idPool)
 	return this
 }
 
-func (this *RequestFlightRules) Init(IdPool *IdPool) {
+func (this *RequestStateMachine) Init(IdPool *IdPool) {
 	this.idPool = IdPool
 	this.requests = make(map[int]requestState)
 }
 
-func (this *RequestFlightRules) TryPing(f func(id int)) error {
+func (this *RequestStateMachine) TryPing(f func(id int)) error {
 	this.mutex.Lock()
 	id, ok := this.idPool.AllocateId()
 	if ok {
@@ -45,7 +45,7 @@ func (this *RequestFlightRules) TryPing(f func(id int)) error {
 	return nil
 }
 
-func (this *RequestFlightRules) TryBeginRequest(f func(id int)) error {
+func (this *RequestStateMachine) TryBeginRequest(f func(id int)) error {
 	this.mutex.Lock()
 	id, ok := this.idPool.AllocateId()
 	if ok {
@@ -61,14 +61,19 @@ func (this *RequestFlightRules) TryBeginRequest(f func(id int)) error {
 	return nil
 }
 
-func (this *RequestFlightRules) TrySendRequestChunk(id int, isTerminated bool, f func(id int, isTerminated bool)) error {
+func (this *RequestStateMachine) TrySendRequestChunk(id int, isTerminated bool, f func(id int, isTerminated bool)) error {
 	this.mutex.Lock()
 	state := this.getRequestState(id)
-	if state == requestStateAllocated {
-		state = requestStateSending
+	if state == requestStateAllocated || state == requestStateSending {
+		if isTerminated {
+			this.requests[id] = requestStateAwaitingResponse
+		} else {
+			this.requests[id] = requestStateSending
+		}
 	}
 	this.mutex.Unlock()
 
+	// fmt.Printf("### RSM %p: Send request chunk id %v, term %v, state %v -> %v\n", this, id, isTerminated, state, this.requests[id])
 	switch state {
 	default:
 		return fmt.Errorf("Request %v is in an unhandled state (%v)", id, state)
@@ -84,7 +89,7 @@ func (this *RequestFlightRules) TrySendRequestChunk(id int, isTerminated bool, f
 	return nil
 }
 
-func (this *RequestFlightRules) TryCancelRequest(id int, f func(id int)) error {
+func (this *RequestStateMachine) TryCancelRequest(id int, f func(id int)) error {
 	this.mutex.Lock()
 	state := this.getRequestState(id)
 	if state == requestStateSending ||
@@ -95,14 +100,14 @@ func (this *RequestFlightRules) TryCancelRequest(id int, f func(id int)) error {
 	}
 	this.mutex.Unlock()
 
+	// fmt.Printf("### Cancel request %v, State = %v\n", id, state)
 	switch state {
 	default:
 		return fmt.Errorf("Request %v is in an unhandled state (%v)", id, state)
 	case requestStateDeallocated:
-		return fmt.Errorf("Cannot cancel message %v: No such message", id)
+		// Ignore. There may be a race condition where the request was deallocated.
 	case requestStateAllocated:
 		// Message hasn't been sent yet, so nothing to do.
-		// TODO: Maybe send a fake cancel ack?
 	case requestStateAwaitingCancelAck:
 		// We've already requested a cancel, so nothing to do.
 	case requestStateSending, requestStateAwaitingResponse, requestStateReceivingResponse:
@@ -111,7 +116,7 @@ func (this *RequestFlightRules) TryCancelRequest(id int, f func(id int)) error {
 	return nil
 }
 
-func (this *RequestFlightRules) TryReceiveResponseChunk(id int, isTerminated bool, f func(id int, isTerminated bool)) error {
+func (this *RequestStateMachine) TryReceiveResponseChunk(id int, isTerminated bool, f func(id int, isTerminated bool)) error {
 	this.mutex.Lock()
 	state := this.getRequestState(id)
 	if state == requestStateAwaitingResponse {
@@ -122,6 +127,7 @@ func (this *RequestFlightRules) TryReceiveResponseChunk(id int, isTerminated boo
 	}
 	this.mutex.Unlock()
 
+	// fmt.Printf("### RSM %p: Receive chunk id %v, term %v, state %v -> %v\n", this, id, isTerminated, state, this.requests[id])
 	switch state {
 	default:
 		return fmt.Errorf("Request %v is in an unhandled state (%v)", id, state)
@@ -133,13 +139,14 @@ func (this *RequestFlightRules) TryReceiveResponseChunk(id int, isTerminated boo
 		return fmt.Errorf("Cannot receive response %v: Message has not been completely sent", id)
 	case requestStateAwaitingCancelAck:
 		// Ignore
+		// fmt.Printf("########## Awaiting cancel ack\n")
 	case requestStateAwaitingResponse, requestStateReceivingResponse:
 		f(id, isTerminated)
 	}
 	return nil
 }
 
-func (this *RequestFlightRules) TryReceiveCancelAck(id int, f func(id int)) error {
+func (this *RequestStateMachine) TryReceiveCancelAck(id int, f func(id int)) error {
 	this.mutex.Lock()
 	state := this.getRequestState(id)
 	if state == requestStateAwaitingCancelAck {
@@ -152,7 +159,7 @@ func (this *RequestFlightRules) TryReceiveCancelAck(id int, f func(id int)) erro
 		return fmt.Errorf("Request %v is in an unhandled state (%v)", id, state)
 	case requestStateDeallocated, requestStateAllocated, requestStateSending,
 		requestStateAwaitingResponse, requestStateReceivingResponse:
-	// Shouldn't happen, but no harm done.
+		// Shouldn't happen, but no harm done.
 	case requestStateAwaitingCancelAck:
 		f(id)
 	}
@@ -172,14 +179,14 @@ const (
 	requestStateAwaitingCancelAck
 )
 
-func (this *RequestFlightRules) getRequestState(id int) requestState {
+func (this *RequestStateMachine) getRequestState(id int) requestState {
 	if state, ok := this.requests[id]; ok {
 		return state
 	}
 	return requestStateDeallocated
 }
 
-func (this *RequestFlightRules) removeId(id int) {
+func (this *RequestStateMachine) removeId(id int) {
 	delete(this.requests, id)
 	this.idPool.DeallocateId(id)
 }

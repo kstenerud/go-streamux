@@ -18,9 +18,10 @@ type Protocol struct {
 	hasFinishedEarlyInitialization bool
 	negotiator                     internal.ProtocolNegotiator
 	decoder                        internal.MessageDecoder
-	requestRules                   internal.RequestFlightRules
+	requestStateMachine            internal.RequestStateMachine
 	sender                         MessageSender
 	receiver                       MessageReceiver
+	activeIncomingRequests         map[int]bool
 }
 
 // API
@@ -49,6 +50,7 @@ func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommend
 		requestQuickInit, allowQuickInit)
 	this.sender = sender
 	this.receiver = receiver
+	this.activeIncomingRequests = make(map[int]bool)
 }
 
 func (this *Protocol) SendInitialization() error {
@@ -58,7 +60,7 @@ func (this *Protocol) SendInitialization() error {
 			this.finishEarlyInitialization()
 		}
 		// fmt.Printf("### P %p: Sending init message\n", this)
-		return this.sendRawMessage(PriorityOOB, this.negotiator.BuildInitializeMessage())
+		return this.sendRawMessage(PriorityOOB, -1, this.negotiator.BuildInitializeMessage())
 	}
 	return nil
 }
@@ -92,10 +94,11 @@ func (this *Protocol) BeginRequest(priority int) (message *SendableMessage, err 
 		return nil, fmt.Errorf("Can't send messages: %v", this.negotiator.ExplainFailure())
 	}
 
-	err = this.requestRules.TryBeginRequest(func(id int) {
+	err = this.requestStateMachine.TryBeginRequest(func(id int) {
 		isResponse := false
 		message = newSendableMessage(this, priority, id,
 			this.negotiator.LengthBits, this.negotiator.IdBits, isResponse)
+		// fmt.Printf("### P %p: New SM %p\n", this, message)
 	})
 	return message, err
 }
@@ -113,22 +116,23 @@ func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMe
 }
 
 func (this *Protocol) Cancel(messageId int) (err error) {
-	var innerErr error
-	err = this.requestRules.TryCancelRequest(messageId, func(id int) {
-		innerErr = this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeCancel))
+	outerErr := this.requestStateMachine.TryCancelRequest(messageId, func(id int) {
+		err = this.sendRawMessage(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeCancel))
 	})
-	if err == nil {
-		err = innerErr
+	if outerErr != nil {
+		err = outerErr
 	}
 	return err
 }
 
 func (this *Protocol) Ping() (id int, err error) {
-	this.requestRules.TryPing(func(newId int) {
+	outerErr := this.requestStateMachine.TryPing(func(newId int) {
 		id = newId
-		err = this.OnMessageChunkToSend(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeRequestEmptyTermination))
+		err = this.sendRawMessage(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeRequestEmptyTermination))
 	})
-
+	if outerErr != nil {
+		err = outerErr
+	}
 	return id, err
 }
 
@@ -158,36 +162,68 @@ func (this *Protocol) Feed(incomingStreamData []byte) (err error) {
 
 // Callbacks
 
-func (this *Protocol) OnMessageChunkToSend(priority int, messageId int, data []byte) error {
-	return this.sendRawMessage(priority, data)
-}
-
-func (this *Protocol) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
-	// TODO: keep track of chunks-in-progress so that we can detect ping and ping response
-	return this.receiver.OnRequestChunkReceived(messageId, isEnd, data)
-}
-
-func (this *Protocol) OnResponseChunkReceived(messageId int, isEnd bool, data []byte) (err error) {
-	this.requestRules.TryReceiveResponseChunk(messageId, isEnd, func(id int, isTerminated bool) {
-		err = this.receiver.OnResponseChunkReceived(id, isTerminated, data)
+func (this *Protocol) OnRequestChunkToSend(priority int, messageId int, isEnd bool, data []byte) (err error) {
+	// fmt.Printf("### P %p: Send request chunk id %v, data %v, term %v\n", this, messageId, len(data), isEnd)
+	outerErr := this.requestStateMachine.TrySendRequestChunk(messageId, isEnd, func(id int, isTerminated bool) {
+		err = this.sendRawMessage(priority, id, data)
 	})
+	if outerErr != nil {
+		err = outerErr
+	}
 	return err
 }
 
+func (this *Protocol) OnResponseChunkReceived(messageId int, isEnd bool, data []byte) (err error) {
+	// fmt.Printf("### P %p: Receive response chunk id %v, term %v, data %v\n", this, messageId, isEnd, len(data))
+	outerErr := this.requestStateMachine.TryReceiveResponseChunk(messageId, isEnd, func(id int, isTerminated bool) {
+		err = this.receiver.OnResponseChunkReceived(id, isTerminated, data)
+		// fmt.Printf("### P %p: Try receive did call with err %v\n", this, err)
+	})
+	if outerErr != nil {
+		err = outerErr
+	}
+	return err
+}
+
+func (this *Protocol) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
+	// fmt.Printf("### P %p: Receive request chunk id %v, term %v, data %v\n", this, messageId, isEnd, len(data))
+	if isEnd {
+		delete(this.activeIncomingRequests, messageId)
+	} else {
+		this.activeIncomingRequests[messageId] = true
+	}
+	return this.receiver.OnRequestChunkReceived(messageId, isEnd, data)
+}
+
+func (this *Protocol) OnResponseChunkToSend(priority int, messageId int, isEnd bool, data []byte) (err error) {
+	// fmt.Printf("### P %p: Send response chunk id %v, data %v, term %v\n", this, messageId, len(data), isEnd)
+	return this.sendRawMessage(priority, messageId, data)
+}
+
 func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType internal.MessageType) (err error) {
+	// fmt.Printf("### P %p: Zero length message id %v, type %v\n", this, messageId, messageType)
 	switch messageType {
 	case internal.MessageTypeCancel:
 		return this.receiver.OnCancelReceived(messageId)
 	case internal.MessageTypeCancelAck:
-		this.requestRules.TryReceiveCancelAck(messageId, func(id int) {
+		outerErr := this.requestStateMachine.TryReceiveCancelAck(messageId, func(id int) {
 			err = this.receiver.OnCancelAckReceived(messageId)
 		})
+		if outerErr != nil {
+			err = outerErr
+		}
 	case internal.MessageTypeEmptyResponse:
 		// TODO: Check for ping response
 		return this.receiver.OnEmptyResponseReceived(messageId)
 	case internal.MessageTypeRequestEmptyTermination:
 		// TODO: Check for ping
-		return this.receiver.OnPingReceived(messageId)
+		if _, isActive := this.activeIncomingRequests[messageId]; isActive {
+			isTerminated := true
+			return this.OnRequestChunkReceived(messageId, isTerminated, []byte{})
+		} else {
+			// TODO: Send ping response
+			return this.receiver.OnPingReceived(messageId)
+		}
 	default:
 		// TODO: Bug
 	}
@@ -218,13 +254,13 @@ func (this *Protocol) finishEarlyInitialization() {
 	if !this.hasFinishedEarlyInitialization {
 		this.hasFinishedEarlyInitialization = true
 		this.decoder.Init(this.negotiator.LengthBits, this.negotiator.IdBits, this)
-		this.requestRules.Init(internal.NewIdPool(this.negotiator.IdBits))
+		this.requestStateMachine.Init(internal.NewIdPool(this.negotiator.IdBits))
 		this.sender.OnAbleToSend()
 	}
 }
 
-func (this *Protocol) sendRawMessage(priority int, data []byte) error {
-	return this.sender.OnMessageChunkToSend(priority, data)
+func (this *Protocol) sendRawMessage(priority int, messageId int, data []byte) error {
+	return this.sender.OnMessageChunkToSend(priority, messageId, data)
 }
 
 func (this *Protocol) newEmptyMessageHeader(id int, messageType internal.MessageType) []byte {
@@ -232,12 +268,4 @@ func (this *Protocol) newEmptyMessageHeader(id int, messageType internal.Message
 	header.Init(this.negotiator.LengthBits, this.negotiator.IdBits)
 	header.SetIdAndType(id, messageType)
 	return header.Encoded.Data
-}
-
-func (this *Protocol) cancelAck(messageId int) error {
-	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, internal.MessageTypeCancelAck))
-}
-
-func (this *Protocol) pingAck(messageId int) error {
-	return this.OnMessageChunkToSend(PriorityOOB, messageId, this.newEmptyMessageHeader(messageId, internal.MessageTypeEmptyResponse))
 }

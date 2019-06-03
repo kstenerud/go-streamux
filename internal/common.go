@@ -1,7 +1,8 @@
 package internal
 
 type InternalMessageSender interface {
-	OnMessageChunkToSend(priority int, messageId int, chunk []byte) error
+	OnRequestChunkToSend(priority int, messageId int, isEnd bool, chunk []byte) error
+	OnResponseChunkToSend(priority int, messageId int, isEnd bool, chunk []byte) error
 }
 
 type InternalMessageReceiver interface {

@@ -65,9 +65,6 @@ func (this *testPeer) OnEmptyResponseReceived(id int) error {
 
 func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
 	// fmt.Printf("### TP %p: Received request id %v, %v bytes, end %v\n", this, messageId, len(data), isEnd)
-	// if isEnd {
-	// 	fmt.Printf("### TP %p: end of message %v\n", this, messageId)
-	// }
 	message, messageFound := this.RequestsReceived[messageId]
 	endOfMessage, _ := this.RequestsEnded[messageId]
 
@@ -105,7 +102,7 @@ func (this *testPeer) OnAbleToSend() {
 	this.AbleToSend = true
 }
 
-func (this *testPeer) OnMessageChunkToSend(priority int, data []byte) error {
+func (this *testPeer) OnMessageChunkToSend(priority int, messageId int, data []byte) error {
 	// fmt.Printf("### TP %p: Sending message chunk size %v\n", this, len(data))
 	toSend := make([]byte, len(data))
 	copy(toSend, data)
