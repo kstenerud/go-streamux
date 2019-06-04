@@ -27,6 +27,7 @@ type MessageHeader struct {
 	// Session constants
 	maskId     uint32
 	maskLength uint32
+	maskUnused uint32
 	shiftId    uint
 
 	// Internal
@@ -48,6 +49,7 @@ func (this *MessageHeader) Init(idBits int, lengthBits int) {
 	this.shiftId = shiftLength + uint(lengthBits)
 	this.maskLength = 1<<uint(lengthBits) - 1
 	this.MaxChunkLength = 1<<uint(lengthBits) - 1
+	this.maskUnused = ^(1<<uint(idBits+lengthBits+2) - 1)
 	this.Encoded.Init(0, this.HeaderLength, this.HeaderLength)
 }
 
@@ -102,7 +104,7 @@ func (this *MessageHeader) ClearEncoded() {
 	this.Encoded.Minimize()
 }
 
-func (this *MessageHeader) Feed(incomingStreamData []byte) (remainingData []byte) {
+func (this *MessageHeader) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
 	remainingData = incomingStreamData
 	// fmt.Printf("### MH %p: Feed: headerLength %v, headerBuffer %v, incoming %v\n", this, this.HeaderLength, len(this.Encoded), len(remainingData))
 
@@ -114,18 +116,20 @@ func (this *MessageHeader) Feed(incomingStreamData []byte) (remainingData []byte
 			headerFields <<= 8
 			headerFields |= uint32(this.Encoded.Data[i])
 		}
+		if headerFields&this.maskUnused != 0 {
+			return remainingData, fmt.Errorf("Unused header bits were nonzero (0x%x)", headerFields&this.maskUnused)
+		}
 		this.IsEndOfMessage = (headerFields & 1) == 1
 		this.IsResponse = ((headerFields >> shiftResponseBit) & 1) == 1
 		this.Id = int((headerFields >> this.shiftId) & this.maskId)
 		this.Length = int((headerFields >> shiftLength) & this.maskLength)
 		this.updateMessageType()
-		// TODO: Error if any unused bits are set.
 
 		// fmt.Printf("### MH %p: lshift %v, lmask %v, ishift %v, imask %v\n", this, this.shiftLength, this.maskLength, shiftId, this.maskId)
 		// fmt.Printf("### MH %p: Decode header %08x: len %v, id %v, resp %v, term %v\n", this, headerFields, this.Length, this.Id, this.IsResponse, this.IsEndOfMessage)
 	}
 
-	return remainingData
+	return remainingData, err
 }
 
 // Internal

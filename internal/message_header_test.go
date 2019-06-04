@@ -12,7 +12,11 @@ func assertHeaderEncoded(t *testing.T, idBits int, lengthBits int, id int, lengt
 	test.AssertSlicesAreEquivalent(t, header.Encoded.Data, expected)
 
 	header = NewMessageHeader(idBits, lengthBits)
-	remainingBytes := header.Feed(expected)
+	remainingBytes, err := header.Feed(expected)
+	if err != nil {
+		t.Error(err)
+		return
+	}
 	if len(remainingBytes) > 0 {
 		t.Errorf("[%v %v %v %v %v %v] Remaining length should have been 0 but was %v",
 			idBits, lengthBits, id, length, isResponse, isEnd, len(remainingBytes))
@@ -36,6 +40,14 @@ func assertHeaderEncoded(t *testing.T, idBits int, lengthBits int, id int, lengt
 	if header.IsEndOfMessage != isEnd {
 		t.Errorf("[%v %v %v %v %v %v] Expected termination bit of %v but got %v",
 			idBits, lengthBits, id, length, isResponse, isEnd, header.IsEndOfMessage, isEnd)
+	}
+}
+
+func assertHeaderFails(t *testing.T, idBits int, lengthBits int, encodedHeader []byte) {
+	header := NewMessageHeader(idBits, lengthBits)
+	_, err := header.Feed(encodedHeader)
+	if err == nil {
+		t.Errorf("Should have generated an error")
 	}
 }
 
@@ -98,4 +110,11 @@ func TestHeader13Bit14Bit(t *testing.T) {
 	assertHeaderEncoded(t, 13, 14, 400, 10000, false, true, []byte{0x41, 0x9c, 0x90, 0x01})
 	assertHeaderEncoded(t, 13, 14, 400, 10000, true, false, []byte{0x42, 0x9c, 0x90, 0x01})
 	assertHeaderEncoded(t, 13, 14, 400, 10000, true, true, []byte{0x43, 0x9c, 0x90, 0x01})
+}
+
+func TestHeaderUnusedBitsSet(t *testing.T) {
+	assertHeaderFails(t, 2, 2, []byte{0x40})
+	assertHeaderFails(t, 10, 2, []byte{0x40, 0x80})
+	assertHeaderFails(t, 10, 10, []byte{0x40, 0x00, 0xff})
+	assertHeaderFails(t, 12, 13, []byte{0x40, 0x00, 0x00, 0xff})
 }
