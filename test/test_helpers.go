@@ -1,7 +1,6 @@
 package test
 
 import (
-	"fmt"
 	"testing"
 )
 
@@ -27,18 +26,16 @@ func AssertDoesPanic(t *testing.T, f func()) {
 	}
 }
 
-func AssertSlicesAreEquivalent(actual, expected []byte) error {
+func AssertSlicesAreEquivalent(t *testing.T, actual, expected []byte) {
 	if len(actual) != len(expected) {
-		return fmt.Errorf("Slices are of diffrent lengths (actual = %v, expected = %v)", len(actual), len(expected))
+		t.Errorf("Slices are of diffrent lengths (actual = %v, expected = %v)", len(actual), len(expected))
 	}
 
 	for i := 0; i < len(actual); i++ {
 		if actual[i] != expected[i] {
-			return fmt.Errorf("Slices differ at index %v", i)
+			t.Errorf("Slices differ at index %v (expected %02x, actual %02x)", i, expected[i], actual[i])
 		}
 	}
-
-	return nil
 }
 
 func NewTestBytes(length int) []byte {

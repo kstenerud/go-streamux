@@ -48,11 +48,7 @@ func TestRequestResponse(t *testing.T) {
 	a.Wait()
 
 	actualRequest := b.GetRequest(id)
-	if err := test.AssertSlicesAreEquivalent(actualRequest, expectedRequest); err != nil {
-		t.Error(err)
-	}
+	test.AssertSlicesAreEquivalent(t, actualRequest, expectedRequest)
 	actualResponse := a.GetResponse(id)
-	if err := test.AssertSlicesAreEquivalent(actualResponse, expectedResponse); err != nil {
-		t.Error(err)
-	}
+	test.AssertSlicesAreEquivalent(t, actualResponse, expectedResponse)
 }

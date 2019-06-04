@@ -184,7 +184,7 @@ func (this *MessageHeader) encodeHeader() {
 	}
 
 	// fmt.Printf("### MH %p: lshift %v, ishift %v\n", this, this.shiftLength, shiftId)
-	// fmt.Printf("### MH %p: Encode header len %v, id %v, resp %v, term %v\n", this, this.Length, this.idField>>shiftId, this.responseField>>shiftResponseBit, this.terminationField)
+	// fmt.Printf("### MH %p: Encode header len %v, id %v, resp %v, term %v\n", this, this.Length, this.Id, this.responseField>>shiftResponseBit, this.terminationField)
 }
 
 func (this *MessageHeader) setIdAndResponse(id int, isResponse bool) {

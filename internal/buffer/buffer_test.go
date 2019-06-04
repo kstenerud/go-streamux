@@ -78,5 +78,5 @@ func TestOverwriteHead(t *testing.T) {
 	buffer.ExpandTo(4)
 	buffer.OverwriteHead(expected)
 	actual := buffer.Data[:len(expected)]
-	test.AssertSlicesAreEquivalent(actual, expected)
+	test.AssertSlicesAreEquivalent(t, actual, expected)
 }

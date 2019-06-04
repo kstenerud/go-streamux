@@ -25,9 +25,7 @@ func assertStreamData(t *testing.T, idBits int, lengthBits int, dataSize int) {
 	a.Wait()
 
 	actual := b.GetFirstRequest()
-	if err := test.AssertSlicesAreEquivalent(actual, expected); err != nil {
-		t.Error(err)
-	}
+	test.AssertSlicesAreEquivalent(t, actual, expected)
 }
 
 // =============================================================================

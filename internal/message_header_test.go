@@ -9,7 +9,7 @@ import (
 func assertEncoded(t *testing.T, idBits int, lengthBits int, id int, length int, isResponse bool, isEnd bool, expected []byte) {
 	header := NewMessageHeader(idBits, lengthBits)
 	header.SetAll(id, length, isResponse, isEnd)
-	test.AssertSlicesAreEquivalent(header.Encoded.Data, expected)
+	test.AssertSlicesAreEquivalent(t, header.Encoded.Data, expected)
 
 	header = NewMessageHeader(idBits, lengthBits)
 	remainingBytes := header.Feed(expected)
@@ -39,6 +39,7 @@ func assertEncoded(t *testing.T, idBits int, lengthBits int, id int, length int,
 	}
 }
 
-// func TestStuff(t *testing.T) {
-// 	assertEncoded(t, 1, 1, 0, 0, false, false, []byte{0x00})
-// }
+func TestStuff(t *testing.T) {
+	assertEncoded(t, 1, 1, 0, 0, false, false, []byte{0x00})
+	// assertEncoded(t, 1, 1, 1, 1, false, false, []byte{0x00})
+}
