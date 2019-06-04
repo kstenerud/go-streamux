@@ -26,27 +26,28 @@ type Protocol struct {
 
 // API
 
-func NewProtocol(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
-	idMinBits int, idMaxBits int, idRecommendBits int, requestQuickInit bool,
-	allowQuickInit bool, sender MessageSender,
+func NewProtocol(idMinBits int, idMaxBits int, idRecommendBits int,
+	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+	requestQuickInit bool, allowQuickInit bool, sender MessageSender,
 	receiver MessageReceiver) *Protocol {
 
 	this := new(Protocol)
-	this.Init(lengthMinBits, lengthMaxBits, lengthRecommendBits,
-		idMinBits, idMaxBits, idRecommendBits,
+	this.Init(idMinBits, idMaxBits, idRecommendBits,
+		lengthMinBits, lengthMaxBits, lengthRecommendBits,
 		requestQuickInit, allowQuickInit,
 		sender, receiver)
 
 	return this
 }
 
-func (this *Protocol) Init(lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
-	idMinBits int, idMaxBits int, idRecommendBits int, requestQuickInit bool,
-	allowQuickInit bool, sender MessageSender,
+func (this *Protocol) Init(idMinBits int, idMaxBits int, idRecommendBits int,
+	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+	requestQuickInit bool, allowQuickInit bool, sender MessageSender,
 	receiver MessageReceiver) {
 
-	this.negotiator.Init(ProtocolVersion, lengthMinBits, lengthMaxBits, lengthRecommendBits,
+	this.negotiator.Init(ProtocolVersion,
 		idMinBits, idMaxBits, idRecommendBits,
+		lengthMinBits, lengthMaxBits, lengthRecommendBits,
 		requestQuickInit, allowQuickInit)
 	this.sender = sender
 	this.receiver = receiver
@@ -97,7 +98,7 @@ func (this *Protocol) BeginRequest(priority int) (message *SendableMessage, err 
 	err = this.requestStateMachine.TryBeginRequest(func(id int) {
 		isResponse := false
 		message = newSendableMessage(this, priority, id,
-			this.negotiator.LengthBits, this.negotiator.IdBits, isResponse)
+			this.negotiator.IdBits, this.negotiator.LengthBits, isResponse)
 		// fmt.Printf("### P %p: New SM %p\n", this, message)
 	})
 	return message, err
@@ -112,7 +113,7 @@ func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMe
 
 	isResponse := true
 	return newSendableMessage(this, priority, responseToId,
-		this.negotiator.LengthBits, this.negotiator.IdBits, isResponse), nil
+		this.negotiator.IdBits, this.negotiator.LengthBits, isResponse), nil
 }
 
 func (this *Protocol) Cancel(messageId int) (err error) {
@@ -253,7 +254,7 @@ func (this *Protocol) feedNegotiator(incomingStreamData []byte) (remainingData [
 func (this *Protocol) finishEarlyInitialization() {
 	if !this.hasFinishedEarlyInitialization {
 		this.hasFinishedEarlyInitialization = true
-		this.decoder.Init(this.negotiator.LengthBits, this.negotiator.IdBits, this)
+		this.decoder.Init(this.negotiator.IdBits, this.negotiator.LengthBits, this)
 		this.requestStateMachine.Init(internal.NewIdPool(this.negotiator.IdBits))
 		this.sender.OnAbleToSend()
 	}
@@ -265,7 +266,7 @@ func (this *Protocol) sendRawMessage(priority int, messageId int, data []byte) e
 
 func (this *Protocol) newEmptyMessageHeader(id int, messageType internal.MessageType) []byte {
 	var header internal.MessageHeader
-	header.Init(this.negotiator.LengthBits, this.negotiator.IdBits)
+	header.Init(this.negotiator.IdBits, this.negotiator.LengthBits)
 	header.SetIdAndType(id, messageType)
 	return header.Encoded.Data
 }

@@ -27,20 +27,20 @@ type SendableMessage struct {
 // API
 
 func newSendableMessage(messageSender internal.InternalMessageSender, priority int, id int,
-	lengthBits int, idBits int, isResponse bool) *SendableMessage {
+	idBits int, lengthBits int, isResponse bool) *SendableMessage {
 
 	this := new(SendableMessage)
-	this.Init(messageSender, priority, id, lengthBits, idBits, isResponse)
+	this.Init(messageSender, priority, id, idBits, lengthBits, isResponse)
 	return this
 }
 
 func (this *SendableMessage) Init(messageSender internal.InternalMessageSender,
-	priority int, id int, lengthBits int, idBits int, isResponse bool) {
+	priority int, id int, idBits int, lengthBits int, isResponse bool) {
 
 	this.Id = id
 	this.messageSender = messageSender
 	this.priority = priority
-	this.header.Init(lengthBits, idBits)
+	this.header.Init(idBits, lengthBits)
 	this.header.SetIdAndResponseNoEncode(id, isResponse)
 
 	initialBufferCapacity := this.header.HeaderLength + this.header.MaxChunkLength

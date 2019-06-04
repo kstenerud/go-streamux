@@ -14,14 +14,14 @@ type MessageDecoder struct {
 
 // API
 
-func NewMessageDecoder(lengthBits int, idBits int, receiver InternalMessageReceiver) *MessageDecoder {
+func NewMessageDecoder(idBits int, lengthBits int, receiver InternalMessageReceiver) *MessageDecoder {
 	this := new(MessageDecoder)
-	this.Init(lengthBits, idBits, receiver)
+	this.Init(idBits, lengthBits, receiver)
 	return this
 }
 
-func (this *MessageDecoder) Init(lengthBits int, idBits int, receiver InternalMessageReceiver) {
-	this.header.Init(lengthBits, idBits)
+func (this *MessageDecoder) Init(idBits int, lengthBits int, receiver InternalMessageReceiver) {
+	this.header.Init(idBits, lengthBits)
 	this.receiver = receiver
 	this.reset()
 }

@@ -21,7 +21,7 @@ type testPeer struct {
 	AbleToSend        bool
 }
 
-func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChannel chan []byte, recvChannel chan []byte, wg *sync.WaitGroup) *testPeer {
+func newTestPeer(t *testing.T, idBits, lengthBits int, isServer bool, sendChannel chan []byte, recvChannel chan []byte, wg *sync.WaitGroup) *testPeer {
 	this := new(testPeer)
 	this.t = t
 	this.RequestsReceived = make(map[int][]byte)
@@ -39,7 +39,7 @@ func newTestPeer(t *testing.T, lengthBits, idBits int, isServer bool, sendChanne
 		requestQuickInit = false
 		allowQuickInit = true
 	}
-	this.protocol = NewProtocol(1, 30, lengthBits, 0, 29, idBits, requestQuickInit, allowQuickInit, this, this)
+	this.protocol = NewProtocol(0, 29, idBits, 1, 30, lengthBits, requestQuickInit, allowQuickInit, this, this)
 	return this
 }
 
@@ -179,12 +179,12 @@ func (this *testPeer) Close() {
 	close(this.sendChannel)
 }
 
-func newTestPeerPair(t *testing.T, lengthBits, idBits int) (client, server *testPeer, err error) {
+func newTestPeerPair(t *testing.T, idBits, lengthBits int) (client, server *testPeer, err error) {
 	wg := new(sync.WaitGroup)
 	clientSendsChannel := make(chan []byte)
 	serverSendsChannel := make(chan []byte)
-	client = newTestPeer(t, lengthBits, idBits, false, clientSendsChannel, serverSendsChannel, wg)
-	server = newTestPeer(t, lengthBits, idBits, true, serverSendsChannel, clientSendsChannel, wg)
+	client = newTestPeer(t, idBits, lengthBits, false, clientSendsChannel, serverSendsChannel, wg)
+	server = newTestPeer(t, idBits, lengthBits, true, serverSendsChannel, clientSendsChannel, wg)
 
 	client.BeginFeeding()
 	server.BeginFeeding()

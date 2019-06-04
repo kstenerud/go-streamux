@@ -6,8 +6,8 @@ import (
 	"github.com/kstenerud/go-streamux/test"
 )
 
-func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
-	a, b, err := newTestPeerPair(t, lengthBits, idBits)
+func assertStreamData(t *testing.T, idBits int, lengthBits int, dataSize int) {
+	a, b, err := newTestPeerPair(t, idBits, lengthBits)
 	if err != nil {
 		t.Error(err)
 		return
@@ -34,24 +34,24 @@ func assertStreamData(t *testing.T, lengthBits int, idBits int, dataSize int) {
 
 func TestStream1(t *testing.T) {
 	for i := 20; i >= 2; i-- {
-		assertStreamData(t, i, 10, 100000)
+		assertStreamData(t, 10, i, 100000)
 	}
 }
 
 func TestStream2(t *testing.T) {
 	for i := 15; i >= 2; i-- {
-		assertStreamData(t, i, 2, 4096)
+		assertStreamData(t, 2, i, 4096)
 	}
 	for i := 15; i >= 2; i-- {
-		assertStreamData(t, i, 2, 4095)
+		assertStreamData(t, 2, i, 4095)
 	}
 	for i := 15; i >= 2; i-- {
-		assertStreamData(t, i, 2, 4094)
+		assertStreamData(t, 2, i, 4094)
 	}
 }
 
 func TestStream3(t *testing.T) {
 	for i := 10; i >= 1; i-- {
-		assertStreamData(t, i, 0, 10)
+		assertStreamData(t, 0, i, 10)
 	}
 }

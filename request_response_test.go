@@ -20,7 +20,7 @@ func TestRequestResponse(t *testing.T) {
 	lengthBits := 10
 	idBits := 4
 
-	a, b, err := newTestPeerPair(t, lengthBits, idBits)
+	a, b, err := newTestPeerPair(t, idBits, lengthBits)
 	if err != nil {
 		t.Error(err)
 		return

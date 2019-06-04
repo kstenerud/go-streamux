@@ -35,14 +35,14 @@ type MessageHeader struct {
 
 // API
 
-func newMessageHeader(lengthBits int, idBits int) *MessageHeader {
+func NewMessageHeader(idBits int, lengthBits int) *MessageHeader {
 	this := new(MessageHeader)
-	this.Init(lengthBits, idBits)
+	this.Init(idBits, lengthBits)
 	return this
 }
 
-func (this *MessageHeader) Init(lengthBits int, idBits int) {
-	this.HeaderLength = calculateHeaderLength(lengthBits, idBits)
+func (this *MessageHeader) Init(idBits int, lengthBits int) {
+	this.HeaderLength = calculateHeaderLength(idBits, lengthBits)
 	this.maskId = 1<<uint(idBits) - 1
 	this.shiftLength = shiftId + uint(idBits)
 	this.maskLength = 1<<uint(lengthBits) - 1
@@ -134,7 +134,7 @@ func boolToUint32(value bool) uint32 {
 	return 0
 }
 
-func calculateHeaderLength(lengthBits, idBits int) int {
+func calculateHeaderLength(idBits, lengthBits int) int {
 	totalBits := lengthBits + idBits
 	switch {
 	case totalBits <= 6:

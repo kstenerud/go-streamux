@@ -52,20 +52,22 @@ const maxTotalBits = 30
 
 // API
 
-func NewNegotiator(protocolVersion int, lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
+func NewNegotiator(protocolVersion int,
 	idMinBits int, idMaxBits int, idRecommendBits int,
+	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	requestQuickInit bool, allowQuickInit bool) *ProtocolNegotiator {
 
 	this := new(ProtocolNegotiator)
-	this.Init(protocolVersion, lengthMinBits, lengthMaxBits, lengthRecommendBits,
-		idMinBits, idMaxBits, idRecommendBits,
+	this.Init(protocolVersion, idMinBits, idMaxBits, idRecommendBits,
+		lengthMinBits, lengthMaxBits, lengthRecommendBits,
 		requestQuickInit, allowQuickInit)
 
 	return this
 }
 
-func (this *ProtocolNegotiator) Init(protocolVersion int, lengthMinBits int, lengthMaxBits int,
-	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
+func (this *ProtocolNegotiator) Init(protocolVersion int,
+	idMinBits int, idMaxBits int, idRecommendBits int,
+	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	requestQuickInit bool, allowQuickInit bool) {
 
 	this.protocolVersion = protocolVersion
@@ -84,8 +86,10 @@ func (this *ProtocolNegotiator) Init(protocolVersion int, lengthMinBits int, len
 		this.allowQuickInit = 1
 	}
 
-	if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
-		this.idMinBits, this.idMaxBits, this.IdBits, this.requestQuickInit, this.allowQuickInit); err != nil {
+	if err := validateInitializeFields(this.idMinBits, this.idMaxBits, this.IdBits,
+		this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
+		this.requestQuickInit, this.allowQuickInit); err != nil {
+
 		this.markNegotiationFailure()
 		panic(err)
 	}
@@ -207,7 +211,7 @@ func negotiateBitCount(name string, usMin int, usMax int, usRecommended int, the
 	return negotiated, nil
 }
 
-func capBitCounts(lengthBits, idBits int) (lengthBitsCapped, idBitsCapped int) {
+func capBitCounts(idBits, lengthBits int) (idBitsCapped, lengthBitsCapped int) {
 	idBitsCapped = idBits
 	lengthBitsCapped = lengthBits
 	if lengthBits+idBits > maxTotalBits {
@@ -223,7 +227,7 @@ func capBitCounts(lengthBits, idBits int) (lengthBitsCapped, idBitsCapped int) {
 			idBitsCapped = maxTotalBits - lengthBits
 		}
 	}
-	return lengthBitsCapped, idBitsCapped
+	return idBitsCapped, lengthBitsCapped
 }
 
 func validateMinMaxLimits(name string, value int, min int, max int) error {
@@ -257,8 +261,8 @@ func validateMinMaxRecommend(name string, min int, max int, recommend int) error
 	return nil
 }
 
-func validateInitializeFields(lengthMinBits int, lengthMaxBits int,
-	lengthRecommendBits int, idMinBits int, idMaxBits int, idRecommendBits int,
+func validateInitializeFields(idMinBits int, idMaxBits int, idRecommendBits int,
+	lengthMinBits int, lengthMaxBits int, lengthRecommendBits int,
 	requestQuickInit int, allowQuickInit int) error {
 
 	if requestQuickInit != 0 {
@@ -346,8 +350,8 @@ func (this *ProtocolNegotiator) negotiateInitializeMessage() error {
 	themRequestQuickInit := int((message >> shiftQuickInitRequest) & 1)
 	themAllowQuickInit := int((message >> shiftQuickInitAllowed) & 1)
 
-	if err := validateInitializeFields(themLengthMinBits, themLengthMaxBits,
-		themLengthBits, themIdMinBits, themIdMaxBits, themIdBits,
+	if err := validateInitializeFields(themIdMinBits, themIdMaxBits, themIdBits,
+		themLengthMinBits, themLengthMaxBits, themLengthBits,
 		themRequestQuickInit, themAllowQuickInit); err != nil {
 
 		return err
@@ -359,8 +363,8 @@ func (this *ProtocolNegotiator) negotiateInitializeMessage() error {
 		}
 
 		// Make sure our recommended values work with their limits
-		if err := validateInitializeFields(themLengthMinBits, themLengthMaxBits,
-			this.LengthBits, themIdMinBits, themIdMaxBits, this.IdBits,
+		if err := validateInitializeFields(themIdMinBits, themIdMaxBits, this.IdBits,
+			themLengthMinBits, themLengthMaxBits, this.LengthBits,
 			themRequestQuickInit, themAllowQuickInit); err != nil {
 
 			return err
@@ -374,30 +378,30 @@ func (this *ProtocolNegotiator) negotiateInitializeMessage() error {
 		}
 
 		// Make sure their recommended values work with our limits
-		if err := validateInitializeFields(this.lengthMinBits, this.lengthMaxBits,
-			themLengthBits, this.idMinBits, this.idMaxBits, themIdBits,
+		if err := validateInitializeFields(this.idMinBits, this.idMaxBits, themIdBits,
+			this.lengthMinBits, this.lengthMaxBits, themLengthBits,
 			this.requestQuickInit, this.allowQuickInit); err != nil {
 
 			return err
 		}
-		this.LengthBits = themLengthBits
 		this.IdBits = themIdBits
+		this.LengthBits = themLengthBits
 	} else {
-		idBits, err := negotiateBitCount("ID", this.idMinBits,
-			this.idMaxBits, this.IdBits,
+		idBits, err := negotiateBitCount("ID",
+			this.idMinBits, this.idMaxBits, this.IdBits,
 			themIdMinBits, themIdMaxBits, themIdBits)
 		if err != nil {
 			return err
 		}
 
-		lengthBits, err := negotiateBitCount("length", this.lengthMinBits,
-			this.lengthMaxBits, this.LengthBits, themLengthMinBits,
-			themLengthMaxBits, themLengthBits)
+		lengthBits, err := negotiateBitCount("length",
+			this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
+			themLengthMinBits, themLengthMaxBits, themLengthBits)
 		if err != nil {
 			return err
 		}
 
-		this.LengthBits, this.IdBits = capBitCounts(lengthBits, idBits)
+		this.IdBits, this.LengthBits = capBitCounts(idBits, lengthBits)
 
 	}
 
