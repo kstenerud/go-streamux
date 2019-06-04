@@ -46,6 +46,7 @@ func AssertSlicesAreEquivalent(t *testing.T, actual, expected []byte) {
 				t.Errorf("Expected: [%v]\n", hex.EncodeToString(expected))
 				t.Errorf("Actual:   [%v]\n", hex.EncodeToString(actual))
 			}
+			return
 		}
 	}
 }

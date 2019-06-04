@@ -11,6 +11,8 @@ const (
 	shiftLength      = 2
 )
 
+// MessageHeader encodes and decodes a message header. Parameters to the setters
+// are assumed to be valid (this class performs no validation).
 type MessageHeader struct {
 	// Public data (read only)
 	Id             int
@@ -117,6 +119,8 @@ func (this *MessageHeader) Feed(incomingStreamData []byte) (remainingData []byte
 		this.Id = int((headerFields >> this.shiftId) & this.maskId)
 		this.Length = int((headerFields >> shiftLength) & this.maskLength)
 		this.updateMessageType()
+		// TODO: Error if any unused bits are set.
+
 		// fmt.Printf("### MH %p: lshift %v, lmask %v, ishift %v, imask %v\n", this, this.shiftLength, this.maskLength, shiftId, this.maskId)
 		// fmt.Printf("### MH %p: Decode header %08x: len %v, id %v, resp %v, term %v\n", this, headerFields, this.Length, this.Id, this.IsResponse, this.IsEndOfMessage)
 	}
