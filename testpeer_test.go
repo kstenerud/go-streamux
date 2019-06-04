@@ -11,7 +11,6 @@ type testPeer struct {
 	t                 *testing.T
 	protocol          *Protocol
 	sendChannel       chan []byte
-	recvChannel       chan []byte
 	wg                *sync.WaitGroup
 	RequestsReceived  map[int][]byte
 	RequestsEnded     map[int]bool
@@ -19,9 +18,10 @@ type testPeer struct {
 	ResponsesEnded    map[int]bool
 	RequestOrder      []int
 	AbleToSend        bool
+	isShutdown        bool
 }
 
-func newTestPeer(t *testing.T, idBits, lengthBits int, isServer bool, sendChannel chan []byte, recvChannel chan []byte, wg *sync.WaitGroup) *testPeer {
+func newTestPeer(t *testing.T, idBits, lengthBits int, isServer bool, sendChannel chan []byte, wg *sync.WaitGroup) *testPeer {
 	this := new(testPeer)
 	this.t = t
 	this.RequestsReceived = make(map[int][]byte)
@@ -30,7 +30,6 @@ func newTestPeer(t *testing.T, idBits, lengthBits int, isServer bool, sendChanne
 	this.ResponsesEnded = make(map[int]bool)
 	this.RequestOrder = make([]int, 0, 100)
 	this.sendChannel = sendChannel
-	this.recvChannel = recvChannel
 	this.wg = wg
 
 	requestQuickInit := true
@@ -153,15 +152,22 @@ func (this *testPeer) GetResponse(id int) []byte {
 	panic(fmt.Errorf("Response ID %v not found", id))
 }
 
-func (this *testPeer) BeginInitialization() error {
+func (this *testPeer) SendInitialization() error {
 	return this.protocol.SendInitialization()
 }
 
-func (this *testPeer) BeginFeeding() {
+func (this *testPeer) Shutdown() {
+	this.isShutdown = true
+}
+
+func (this *testPeer) FeedFromChannel(recvChannel chan []byte) {
 	this.wg.Add(1)
 	go func() {
 		defer this.wg.Done()
-		for data := range this.recvChannel {
+		for data := range recvChannel {
+			if this.isShutdown == true {
+				return
+			}
 			// fmt.Printf("### Reading chunk of %v bytes\n", len(data))
 			if err := this.protocol.Feed(data); err != nil {
 				this.t.Error(err)
@@ -183,17 +189,19 @@ func newTestPeerPair(t *testing.T, idBits, lengthBits int) (client, server *test
 	wg := new(sync.WaitGroup)
 	clientSendsChannel := make(chan []byte)
 	serverSendsChannel := make(chan []byte)
-	client = newTestPeer(t, idBits, lengthBits, false, clientSendsChannel, serverSendsChannel, wg)
-	server = newTestPeer(t, idBits, lengthBits, true, serverSendsChannel, clientSendsChannel, wg)
+	markClientPeer := false
+	markServerPeer := true
+	client = newTestPeer(t, idBits, lengthBits, markClientPeer, clientSendsChannel, wg)
+	server = newTestPeer(t, idBits, lengthBits, markServerPeer, serverSendsChannel, wg)
 
-	client.BeginFeeding()
-	server.BeginFeeding()
+	client.FeedFromChannel(serverSendsChannel)
+	server.FeedFromChannel(clientSendsChannel)
 
-	if err := client.BeginInitialization(); err != nil {
+	if err := client.SendInitialization(); err != nil {
 		return nil, nil, err
 	}
 
-	if err := server.BeginInitialization(); err != nil {
+	if err := server.SendInitialization(); err != nil {
 		return nil, nil, err
 	}
 
