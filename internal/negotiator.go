@@ -22,22 +22,22 @@ type ProtocolNegotiator struct {
 
 	requestQuickInit int
 	allowQuickInit   int
-	lengthMinBits    int
-	lengthMaxBits    int
 	idMinBits        int
 	idMaxBits        int
+	lengthMinBits    int
+	lengthMaxBits    int
 	messageBuffer    buffer.FeedableBuffer
 	state            negotiatorState
 }
 
 const (
-	shiftQuickInitRequest      = 29
-	shiftQuickInitAllowed      = 28
-	shiftLengthBitsMin         = 24
-	shiftLengthBitsMax         = 19
-	shiftLengthBitsRecommended = 14
-	shiftIdBitsMin             = 10
-	shiftIdBitsMax             = 5
+	shiftQuickInitRequest  = 29
+	shiftQuickInitAllowed  = 28
+	shiftIdBitsMin         = 24
+	shiftIdBitsMax         = 19
+	shiftIdBitsRecommended = 14
+	shiftLengthBitsMin     = 10
+	shiftLengthBitsMax     = 5
 )
 
 const (
@@ -71,12 +71,12 @@ func (this *ProtocolNegotiator) Init(protocolVersion int,
 	requestQuickInit bool, allowQuickInit bool) {
 
 	this.protocolVersion = protocolVersion
-	this.lengthMinBits = lengthMinBits
-	this.lengthMaxBits = lengthMaxBits
-	this.LengthBits = lengthRecommendBits
 	this.idMinBits = idMinBits
 	this.idMaxBits = idMaxBits
 	this.IdBits = idRecommendBits
+	this.lengthMinBits = lengthMinBits
+	this.lengthMaxBits = lengthMaxBits
+	this.LengthBits = lengthRecommendBits
 	this.requestQuickInit = 0
 	if requestQuickInit {
 		this.requestQuickInit = 1
@@ -85,6 +85,9 @@ func (this *ProtocolNegotiator) Init(protocolVersion int,
 	if allowQuickInit {
 		this.allowQuickInit = 1
 	}
+
+	// fmt.Printf("### N %p: Init I (min %v, max %v, rec %v), L (min %v, max %v, rec %v), RQ %v, AQ %v\n", this,
+	// 	this.idMinBits, this.idMaxBits, this.IdBits, this.lengthMinBits, this.lengthMaxBits, this.LengthBits, this.requestQuickInit, this.allowQuickInit)
 
 	if err := validateInitializeFields(this.idMinBits, this.idMaxBits, this.IdBits,
 		this.lengthMinBits, this.lengthMaxBits, this.LengthBits,
@@ -104,14 +107,14 @@ func (this *ProtocolNegotiator) Init(protocolVersion int,
 }
 
 func (this *ProtocolNegotiator) BuildInitializeMessage() []byte {
-	requestPieces := this.IdBits |
-		this.idMaxBits<<shiftIdBitsMax |
+	requestPieces := this.requestQuickInit<<shiftQuickInitRequest |
+		this.allowQuickInit<<shiftQuickInitAllowed |
 		this.idMinBits<<shiftIdBitsMin |
-		this.LengthBits<<shiftLengthBitsRecommended |
-		this.lengthMaxBits<<shiftLengthBitsMax |
+		this.idMaxBits<<shiftIdBitsMax |
+		this.IdBits<<shiftIdBitsRecommended |
 		this.lengthMinBits<<shiftLengthBitsMin |
-		this.requestQuickInit<<shiftQuickInitRequest |
-		this.allowQuickInit<<shiftQuickInitAllowed
+		this.lengthMaxBits<<shiftLengthBitsMax |
+		this.LengthBits
 
 	request := []byte{
 		byte(this.protocolVersion),
@@ -341,14 +344,17 @@ func (this *ProtocolNegotiator) negotiateInitializeMessage() error {
 			uint(this.messageBuffer.Data[3])<<8 |
 			uint(this.messageBuffer.Data[4])
 
-	themIdBits := int(message & maskRecommended)
-	themIdMaxBits := int((message >> shiftIdBitsMax) & maskMax)
-	themIdMinBits := int((message >> shiftIdBitsMin) & maskMin)
-	themLengthBits := int((message >> shiftLengthBitsRecommended) & maskRecommended)
-	themLengthMaxBits := int((message >> shiftLengthBitsMax) & maskMax)
-	themLengthMinBits := int((message >> shiftLengthBitsMin) & maskMin)
 	themRequestQuickInit := int((message >> shiftQuickInitRequest) & 1)
 	themAllowQuickInit := int((message >> shiftQuickInitAllowed) & 1)
+	themIdMinBits := int((message >> shiftIdBitsMin) & maskMin)
+	themIdMaxBits := int((message >> shiftIdBitsMax) & maskMax)
+	themIdBits := int((message >> shiftIdBitsRecommended) & maskRecommended)
+	themLengthMinBits := int((message >> shiftLengthBitsMin) & maskMin)
+	themLengthMaxBits := int((message >> shiftLengthBitsMax) & maskMax)
+	themLengthBits := int(message & maskRecommended)
+
+	// fmt.Printf("### N %p: feed I (min %v, max %v, rec %v), L (min %v, max %v, rec %v), RQ %v, AQ %v\n", this,
+	// 	themIdMinBits, themIdMaxBits, themIdBits, themLengthMinBits, themLengthMaxBits, themLengthBits, themRequestQuickInit, themAllowQuickInit)
 
 	if err := validateInitializeFields(themIdMinBits, themIdMaxBits, themIdBits,
 		themLengthMinBits, themLengthMaxBits, themLengthBits,

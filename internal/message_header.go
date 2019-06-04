@@ -8,7 +8,7 @@ import (
 
 const (
 	shiftResponseBit = 1
-	shiftId          = 2
+	shiftLength      = 2
 )
 
 type MessageHeader struct {
@@ -23,14 +23,13 @@ type MessageHeader struct {
 	Encoded        buffer.FeedableBuffer
 
 	// Session constants
-	maskId      uint32
-	maskLength  uint32
-	shiftLength uint
+	maskId     uint32
+	maskLength uint32
+	shiftId    uint
 
 	// Internal
 	terminationField uint32
 	responseField    uint32
-	idField          uint32
 }
 
 // API
@@ -44,7 +43,7 @@ func NewMessageHeader(idBits int, lengthBits int) *MessageHeader {
 func (this *MessageHeader) Init(idBits int, lengthBits int) {
 	this.HeaderLength = calculateHeaderLength(idBits, lengthBits)
 	this.maskId = 1<<uint(idBits) - 1
-	this.shiftLength = shiftId + uint(idBits)
+	this.shiftId = shiftLength + uint(lengthBits)
 	this.maskLength = 1<<uint(lengthBits) - 1
 	this.MaxChunkLength = 1<<uint(lengthBits) - 1
 	this.Encoded.Init(0, this.HeaderLength, this.HeaderLength)
@@ -115,8 +114,8 @@ func (this *MessageHeader) Feed(incomingStreamData []byte) (remainingData []byte
 		}
 		this.IsEndOfMessage = (headerFields & 1) == 1
 		this.IsResponse = ((headerFields >> shiftResponseBit) & 1) == 1
-		this.Id = int((headerFields >> shiftId) & this.maskId)
-		this.Length = int((headerFields >> this.shiftLength) & this.maskLength)
+		this.Id = int((headerFields >> this.shiftId) & this.maskId)
+		this.Length = int((headerFields >> shiftLength) & this.maskLength)
 		this.updateMessageType()
 		// fmt.Printf("### MH %p: lshift %v, lmask %v, ishift %v, imask %v\n", this, this.shiftLength, this.maskLength, shiftId, this.maskId)
 		// fmt.Printf("### MH %p: Decode header %08x: len %v, id %v, resp %v, term %v\n", this, headerFields, this.Length, this.Id, this.IsResponse, this.IsEndOfMessage)
@@ -175,8 +174,8 @@ func (this *MessageHeader) updateMessageType() {
 func (this *MessageHeader) encodeHeader() {
 	headerFields := this.terminationField |
 		this.responseField |
-		this.idField |
-		uint32(this.Length)<<this.shiftLength
+		uint32(this.Id)<<this.shiftId |
+		uint32(this.Length)<<shiftLength
 
 	this.Encoded.Maximize()
 	for i := 0; i < this.HeaderLength; i++ {
@@ -190,7 +189,6 @@ func (this *MessageHeader) encodeHeader() {
 
 func (this *MessageHeader) setIdAndResponse(id int, isResponse bool) {
 	this.Id = id
-	this.idField = uint32(id) << shiftId
 	this.IsResponse = isResponse
 	this.responseField = boolToUint32(isResponse) << shiftResponseBit
 }

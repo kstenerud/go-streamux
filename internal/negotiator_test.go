@@ -25,12 +25,12 @@ func buildInitMsg(version, minId, maxId, recId, minLen, maxLen, recLen int, qiRe
 
 	var fields uint32 = qiReqValue<<29 |
 		qiAllowedValue<<28 |
-		uint32(minLen<<24) |
-		uint32(maxLen<<19) |
-		uint32(recLen<<14) |
-		uint32(minId<<10) |
-		uint32(maxId<<5) |
-		uint32(recId)
+		uint32(minId<<24) |
+		uint32(maxId<<19) |
+		uint32(recId<<14) |
+		uint32(minLen<<10) |
+		uint32(maxLen<<5) |
+		uint32(recLen)
 
 	msg := make([]byte, 5)
 	msg[0] = byte(version)
