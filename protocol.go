@@ -1,6 +1,7 @@
 package streamux
 
 import (
+	// "encoding/hex"
 	"fmt"
 	"math"
 	"time"
@@ -54,6 +55,7 @@ func (this *Protocol) Init(idMinBits int, idMaxBits int, idRecommendBits int,
 	this.sender = sender
 	this.receiver = receiver
 	this.activeIncomingRequests = make(map[int]bool)
+	this.activeOutgoingPings = make(map[int]time.Time)
 }
 
 func (this *Protocol) SendInitialization() error {
@@ -101,7 +103,7 @@ func (this *Protocol) BeginRequest(priority int) (message *SendableMessage, err 
 		isResponse := false
 		message = newSendableMessage(this, priority, id,
 			this.negotiator.IdBits, this.negotiator.LengthBits, isResponse)
-		// fmt.Printf("### P %p: New SM %p\n", this, message)
+		// fmt.Printf("### P %p: Begin request. New SM %p\n", this, message)
 	})
 	return message, err
 }
@@ -113,6 +115,7 @@ func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMe
 		return nil, fmt.Errorf("Can't send messages: %v", this.negotiator.ExplainFailure())
 	}
 
+	// fmt.Printf("### P %p: Begin response id %v\n", this, responseToId)
 	isResponse := true
 	return newSendableMessage(this, priority, responseToId,
 		this.negotiator.IdBits, this.negotiator.LengthBits, isResponse), nil
@@ -123,6 +126,7 @@ func (this *Protocol) BeginResponse(priority int, responseToId int) (*SendableMe
 // You will always receive a cancel ack notification, even if no such operation exists.
 func (this *Protocol) Cancel(messageId int) (err error) {
 	outerErr := this.requestStateMachine.TryCancelRequest(messageId, func(id int) {
+		// fmt.Printf("### P %p: Send cancel %v\n", this, messageId)
 		err = this.sendRawMessage(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeCancel))
 	})
 	if outerErr != nil {
@@ -137,6 +141,7 @@ func (this *Protocol) Cancel(messageId int) (err error) {
 func (this *Protocol) Ping() (id int, err error) {
 	outerErr := this.requestStateMachine.TryPing(func(newId int) {
 		id = newId
+		// fmt.Printf("### P %p: Send ping %v\n", this, id)
 		if err = this.sendRawMessage(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeRequestEmptyTermination)); err == nil {
 			this.activeOutgoingPings[id] = time.Now()
 		}
@@ -284,6 +289,7 @@ func (this *Protocol) finishEarlyInitialization() {
 }
 
 func (this *Protocol) sendRawMessage(priority int, messageId int, data []byte) error {
+	// fmt.Printf("### P %p: Send raw message id %v, data %v\n", this, messageId, len(data))
 	return this.sender.OnMessageChunkToSend(priority, messageId, data)
 }
 
@@ -291,13 +297,16 @@ func (this *Protocol) newEmptyMessageHeader(id int, messageType internal.Message
 	var header internal.MessageHeader
 	header.Init(this.negotiator.IdBits, this.negotiator.LengthBits)
 	header.SetIdAndType(id, messageType)
+	// fmt.Printf("### P %p: Sending empty message [%v]\n", this, hex.EncodeToString(header.Encoded.Data))
 	return header.Encoded.Data
 }
 
 func (this *Protocol) cancelAck(id int) error {
+	// fmt.Printf("### P %p: Send cancel ack id %v\n", this, id)
 	return this.sendRawMessage(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeCancelAck))
 }
 
 func (this *Protocol) pingAck(id int) error {
+	// fmt.Printf("### P %p: Send ping ack id %v\n", this, id)
 	return this.sendRawMessage(PriorityOOB, id, this.newEmptyMessageHeader(id, internal.MessageTypeEmptyResponse))
 }

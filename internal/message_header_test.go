@@ -43,12 +43,52 @@ func assertHeaderEncoded(t *testing.T, idBits int, lengthBits int, id int, lengt
 	}
 }
 
+func assertMessageTypeEncoded(t *testing.T, idBits int, lengthBits int, id int, messageType MessageType, expected []byte) {
+	header := NewMessageHeader(idBits, lengthBits)
+	header.SetIdAndType(id, messageType)
+	test.AssertSlicesAreEquivalent(t, header.Encoded.Data, expected)
+}
+
 func assertHeaderFails(t *testing.T, idBits int, lengthBits int, encodedHeader []byte) {
 	header := NewMessageHeader(idBits, lengthBits)
 	_, err := header.Feed(encodedHeader)
 	if err == nil {
 		t.Errorf("Should have generated an error")
 	}
+}
+
+// =============================================================================
+
+func TestHeaderCancel(t *testing.T) {
+	assertMessageTypeEncoded(t, 0, 1, 0, MessageTypeCancel, []byte{0x00})
+	assertMessageTypeEncoded(t, 2, 3, 1, MessageTypeCancel, []byte{0x20})
+	assertMessageTypeEncoded(t, 10, 3, 2, MessageTypeCancel, []byte{0x40, 0x00})
+	assertMessageTypeEncoded(t, 10, 6, 20, MessageTypeCancel, []byte{0x00, 0x14, 0x00})
+	assertMessageTypeEncoded(t, 10, 15, 500, MessageTypeCancel, []byte{0x00, 0x00, 0xe8, 0x03})
+}
+
+func TestHeaderCancelAck(t *testing.T) {
+	assertMessageTypeEncoded(t, 0, 1, 0, MessageTypeCancelAck, []byte{0x02})
+	assertMessageTypeEncoded(t, 2, 3, 1, MessageTypeCancelAck, []byte{0x22})
+	assertMessageTypeEncoded(t, 10, 3, 2, MessageTypeCancelAck, []byte{0x42, 0x00})
+	assertMessageTypeEncoded(t, 10, 6, 20, MessageTypeCancelAck, []byte{0x02, 0x14, 0x00})
+	assertMessageTypeEncoded(t, 10, 15, 500, MessageTypeCancelAck, []byte{0x02, 0x00, 0xe8, 0x03})
+}
+
+func TestHeaderPing(t *testing.T) {
+	assertMessageTypeEncoded(t, 0, 1, 0, MessageTypeRequestEmptyTermination, []byte{0x01})
+	assertMessageTypeEncoded(t, 2, 3, 1, MessageTypeRequestEmptyTermination, []byte{0x21})
+	assertMessageTypeEncoded(t, 10, 3, 2, MessageTypeRequestEmptyTermination, []byte{0x41, 0x00})
+	assertMessageTypeEncoded(t, 10, 6, 20, MessageTypeRequestEmptyTermination, []byte{0x01, 0x14, 0x00})
+	assertMessageTypeEncoded(t, 10, 15, 500, MessageTypeRequestEmptyTermination, []byte{0x01, 0x00, 0xe8, 0x03})
+}
+
+func TestHeaderPingAck(t *testing.T) {
+	assertMessageTypeEncoded(t, 0, 1, 0, MessageTypeEmptyResponse, []byte{0x03})
+	assertMessageTypeEncoded(t, 2, 3, 1, MessageTypeEmptyResponse, []byte{0x23})
+	assertMessageTypeEncoded(t, 10, 3, 2, MessageTypeEmptyResponse, []byte{0x43, 0x00})
+	assertMessageTypeEncoded(t, 10, 6, 20, MessageTypeEmptyResponse, []byte{0x03, 0x14, 0x00})
+	assertMessageTypeEncoded(t, 10, 15, 500, MessageTypeEmptyResponse, []byte{0x03, 0x00, 0xe8, 0x03})
 }
 
 func TestHeader0Bit1Bit(t *testing.T) {

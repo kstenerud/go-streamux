@@ -27,7 +27,7 @@ func (this *MessageDecoder) Init(idBits int, lengthBits int, receiver InternalMe
 }
 
 func (this *MessageDecoder) Feed(incomingStreamData []byte) (remainingData []byte, err error) {
-	// fmt.Printf("### D %p: feed id %v. Data length %v. Is header decoded: %v\n", this, this.header.Id, len(incomingStreamData), this.header.IsDecoded())
+	// fmt.Printf("### MD %p: feed id %v. Data length %v. Is header decoded: %v\n", this, this.header.Id, len(incomingStreamData), this.header.IsDecoded())
 	remainingData = incomingStreamData
 
 	if !this.header.IsDecoded() {
@@ -49,12 +49,12 @@ func (this *MessageDecoder) Feed(incomingStreamData []byte) (remainingData []byt
 		this.remainingByteCount = this.header.Length
 	}
 
-	// fmt.Printf("#### D %p: Remaining data %v, chunk complete %v\n", this, len(remainingData), this.isMessageChunkComplete())
+	// fmt.Printf("#### MD %p: Remaining data %v, chunk complete %v\n", this, len(remainingData), this.isMessageChunkComplete())
 	for len(remainingData) > 0 && !this.isMessageChunkComplete() {
 		var decodedData []byte
 		decodedData, remainingData = buffer.ConsumeBytes(this.remainingByteCount, remainingData)
 		this.remainingByteCount -= len(decodedData)
-		// fmt.Printf("#### D %p: Message data. Length %v\n", this, len(decodedData))
+		// fmt.Printf("#### MD %p: Message data. Length %v\n", this, len(decodedData))
 		if err := this.notifyMessageData(decodedData); err != nil {
 			fmt.Printf("ERROR %v\n", err)
 			return remainingData, err

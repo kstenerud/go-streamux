@@ -8,17 +8,21 @@ import (
 )
 
 type testPeer struct {
-	t                 *testing.T
-	protocol          *Protocol
-	sendChannel       chan []byte
-	wg                *sync.WaitGroup
-	RequestsReceived  map[int][]byte
-	RequestsEnded     map[int]bool
-	ResponsesReceived map[int][]byte
-	ResponsesEnded    map[int]bool
-	RequestOrder      []int
-	AbleToSend        bool
-	isShutdown        bool
+	t                  *testing.T
+	protocol           *Protocol
+	sendChannel        chan []byte
+	wg                 *sync.WaitGroup
+	RequestsReceived   map[int][]byte
+	RequestsEnded      map[int]bool
+	ResponsesReceived  map[int][]byte
+	ResponsesEnded     map[int]bool
+	PingsReceived      []int
+	PingAcksReceived   []int
+	CancelsReceived    []int
+	CancelAcksReceived []int
+	RequestOrder       []int
+	AbleToSend         bool
+	isShutdown         bool
 }
 
 func newTestPeer(t *testing.T, idBits, lengthBits int, isServer bool, sendChannel chan []byte, wg *sync.WaitGroup) *testPeer {
@@ -43,23 +47,31 @@ func newTestPeer(t *testing.T, idBits, lengthBits int, isServer bool, sendChanne
 }
 
 func (this *testPeer) OnPingReceived(id int) error {
+	// fmt.Printf("### TP %p: Ping %v received\n", this, id)
+	this.PingsReceived = append(this.PingsReceived, id)
 	return nil
 }
 
 func (this *testPeer) OnPingAckReceived(id int, latency time.Duration) error {
+	// fmt.Printf("### TP %p: Ping ack %v received after %v\n", this, id, latency)
+	this.PingAcksReceived = append(this.PingAcksReceived, id)
 	return nil
 }
 
 func (this *testPeer) OnCancelReceived(messageId int) error {
+	// fmt.Printf("### TP %p: Cancel %v received\n", this, messageId)
+	this.CancelsReceived = append(this.CancelsReceived, messageId)
 	return nil
 }
 
 func (this *testPeer) OnCancelAckReceived(messageId int) error {
+	// fmt.Printf("### TP %p: Cancel ack %v received\n", this, messageId)
+	this.CancelAcksReceived = append(this.CancelAcksReceived, messageId)
 	return nil
 }
 
 func (this *testPeer) OnEmptyResponseReceived(id int) error {
-	return nil
+	return this.OnResponseChunkReceived(id, true, []byte{})
 }
 
 func (this *testPeer) OnRequestChunkReceived(messageId int, isEnd bool, data []byte) error {
@@ -150,6 +162,14 @@ func (this *testPeer) GetResponse(id int) []byte {
 		return value
 	}
 	panic(fmt.Errorf("Response ID %v not found", id))
+}
+
+func (this *testPeer) SendPing() (int, error) {
+	return this.protocol.Ping()
+}
+
+func (this *testPeer) SendCancel(id int) error {
+	return this.protocol.Cancel(id)
 }
 
 func (this *testPeer) SendInitialization() error {

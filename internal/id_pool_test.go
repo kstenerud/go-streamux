@@ -22,6 +22,8 @@ func assertAllocateFails(t *testing.T, pool *IdPool) int {
 	}
 }
 
+// =============================================================================
+
 func TestIdPool0BitExhausted(t *testing.T) {
 	pool := NewIdPool(0)
 

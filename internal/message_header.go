@@ -62,6 +62,8 @@ func (this *MessageHeader) SetAll(id int, length int, isResponse bool, isEndOfMe
 
 func (this *MessageHeader) SetIdAndType(id int, messageType MessageType) {
 	switch messageType {
+	default:
+		panic(fmt.Errorf("Cannot use this API to set message type %v", messageType))
 	case MessageTypeCancel:
 		this.IsEndOfMessage = false
 		this.IsResponse = false
@@ -74,14 +76,11 @@ func (this *MessageHeader) SetIdAndType(id int, messageType MessageType) {
 	case MessageTypeEmptyResponse:
 		this.IsEndOfMessage = true
 		this.IsResponse = true
-	case MessageTypeRequest:
-		panic(fmt.Errorf("Cannot use this API to set message type request"))
-	case MessageTypeResponse:
-		panic(fmt.Errorf("Cannot use this API to set message type response"))
 	}
 	this.Id = id
 	this.Length = 0
 	this.MessageType = messageType
+	this.updateFromFlags()
 	this.encodeHeader()
 }
 
@@ -205,4 +204,9 @@ func (this *MessageHeader) setLengthAndTermination(length int, isEndOfMessage bo
 	this.Length = length
 	this.IsEndOfMessage = isEndOfMessage
 	this.terminationField = boolToUint32(isEndOfMessage)
+}
+
+func (this *MessageHeader) updateFromFlags() {
+	this.responseField = boolToUint32(this.IsResponse) << shiftResponseBit
+	this.terminationField = boolToUint32(this.IsEndOfMessage)
 }
