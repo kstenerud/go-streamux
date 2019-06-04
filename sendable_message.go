@@ -93,16 +93,16 @@ func (this *SendableMessage) End() error {
 	this.header.SetLengthAndTermination(this.getDataLength(), this.isEnded)
 
 	switch this.header.MessageType {
+	default:
+		return fmt.Errorf("Internal bug: SendableMessage.End: Unhandled message type: %v", this.header.MessageType)
 	case internal.MessageTypeRequestEmptyTermination:
 		if this.chunksSent == 0 {
 			return fmt.Errorf("A request message must contain at least 1 byte of payload")
 		}
 	case internal.MessageTypeCancel, internal.MessageTypeCancelAck:
-		return fmt.Errorf("Internal bug: Message type %v should not be possible", this.header.MessageType)
+		return fmt.Errorf("Internal bug: SendableMessage.End: Message type %v should not be possible", this.header.MessageType)
 	case internal.MessageTypeRequest, internal.MessageTypeResponse, internal.MessageTypeEmptyResponse:
 		// These are allowed
-	default:
-		return fmt.Errorf("Internal bug: Unhandled message type: %v", this.header.MessageType)
 	}
 
 	return this.sendCurrentChunk()

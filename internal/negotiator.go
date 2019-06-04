@@ -163,7 +163,7 @@ func (this *ProtocolNegotiator) ExplainFailure() string {
 	if this.state == negotiatorStateNotNegotiated {
 		return "Negotiation not complete"
 	}
-	return "Unknown (this is a bug)"
+	return fmt.Sprintf("Internal bug: ProtocolNegotiator.ExplainFailure: Unhandled state %v", this.state)
 }
 
 // Internal

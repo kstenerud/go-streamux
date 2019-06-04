@@ -37,7 +37,7 @@ func (this *MessageDecoder) Feed(incomingStreamData []byte) (remainingData []byt
 		}
 		if !this.header.IsDecoded() {
 			if len(remainingData) != 0 {
-				return remainingData, fmt.Errorf("INTERNAL BUG: %v bytes in incoming stream, but header still not decoded", len(remainingData))
+				return remainingData, fmt.Errorf("Internal bug: MessageDecoder.Feed: %v bytes remain in incoming stream, but header still not decoded", len(remainingData))
 			}
 			return remainingData, nil
 		} else if this.header.Length == 0 {

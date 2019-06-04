@@ -204,6 +204,8 @@ func (this *Protocol) OnResponseChunkToSend(priority int, messageId int, isEnd b
 func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType internal.MessageType) (err error) {
 	// fmt.Printf("### P %p: Zero length message id %v, type %v\n", this, messageId, messageType)
 	switch messageType {
+	default:
+		err := fmt.Errorf("Internal bug: Protocol.OnZeroLengthMessageReceived: Unexpected message type %v", messageType)
 	case internal.MessageTypeCancel:
 		return this.receiver.OnCancelReceived(messageId)
 	case internal.MessageTypeCancelAck:
@@ -225,8 +227,6 @@ func (this *Protocol) OnZeroLengthMessageReceived(messageId int, messageType int
 			// TODO: Send ping response
 			return this.receiver.OnPingReceived(messageId)
 		}
-	default:
-		// TODO: Bug
 	}
 	return err
 }
@@ -241,7 +241,7 @@ func (this *Protocol) feedNegotiator(incomingStreamData []byte) (remainingData [
 	}
 	if !this.negotiator.IsNegotiationComplete() {
 		if len(remainingData) != 0 {
-			return nil, fmt.Errorf("INTERNAL BUG: %v bytes in incoming stream, but negotiation still not complete", len(incomingStreamData))
+			return nil, fmt.Errorf("Internal bug: Protocol.feedNegotiator: %v bytes in incoming stream, but negotiation still not complete", len(incomingStreamData))
 		}
 		return remainingData, nil
 	}
